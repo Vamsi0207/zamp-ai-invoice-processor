@@ -43,7 +43,7 @@ def test_real_scanned_pdf_ocr(client):
     ("invoice.pdf", "application/pdf", b"", 422),
     ("invoice.pdf", "application/pdf", b"%PDF-broken", 422),
     ("invoice.pdf", "application/pdf", b"x" * (MAX_BYTES + 1), 413),
-])
+], ids=["wrong-extension", "wrong-mime", "invalid-signature", "empty", "corrupt", "oversized"])
 def test_upload_validation(client, name, mime, content, status):
     assert client.post("/documents", files={"file": (name, content, mime)}).status_code == status
 
@@ -91,6 +91,7 @@ def test_mixed_native_scanned_pages():
 
 
 def test_no_text_rejected(monkeypatch):
+    monkeypatch.setattr("app.documents.resolve_tesseract", lambda: "test-tesseract")
     monkeypatch.setattr("app.documents.pytesseract.image_to_string", lambda *a, **k: "")
     with fitz.open() as pdf:
         pdf.new_page()
@@ -103,8 +104,12 @@ def test_ocr_unavailable_returns_validation_error(client, monkeypatch):
     import pytesseract
     def missing(*args, **kwargs):
         raise pytesseract.TesseractNotFoundError()
+    monkeypatch.setattr("app.documents.resolve_tesseract", lambda: "test-tesseract")
     monkeypatch.setattr("app.documents.pytesseract.image_to_string", missing)
-    assert upload(client, "scanned_invoice.pdf").status_code == 422
+    response = upload(client, "scanned_invoice.pdf")
+    assert response.status_code == 422
+    assert "Tesseract OCR is unavailable" in response.json()["detail"]
+    assert "TESSERACT_CMD" in response.json()["detail"]
 
 
 def test_duplicate_upload_does_not_reparse(client, monkeypatch):
@@ -125,6 +130,7 @@ def test_document_store_reopen(client):
 def test_ocr_timeout_is_explicit(client, monkeypatch):
     def timeout(*args, **kwargs):
         raise RuntimeError("Tesseract process timeout")
+    monkeypatch.setattr("app.documents.resolve_tesseract", lambda: "test-tesseract")
     monkeypatch.setattr("app.documents.pytesseract.image_to_string", timeout)
     assert upload(client, "scanned_invoice.pdf").status_code == 422
 
