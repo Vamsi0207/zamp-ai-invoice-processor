@@ -63,7 +63,7 @@ in-workflow PDF/provider/processing failures retain a stage, code and safe messa
 ## Gemini configuration
 
 The backend reads **`GEMINI_API_KEY`** and **`GEMINI_MODEL`** (default
-`gemini-2.5-flash`), exactly as `.env.example` and `AIAdapter` specify. OpenAI reads
+`gemini-3.5-flash-lite`), exactly as `.env.example` and `AIAdapter` specify. OpenAI reads
 `OPENAI_API_KEY` / `OPENAI_MODEL`. Export values only in the backend shell or secret
 settings, restart the server, and inspect the configuration indicator. `.env` is
 ignored and not automatically loaded; never use `VITE_` prefixes for credentials.

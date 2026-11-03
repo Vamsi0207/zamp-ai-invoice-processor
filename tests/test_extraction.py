@@ -47,12 +47,15 @@ def test_real_adapter_request_contract(provider, monkeypatch):
             assert request.url.host == "generativelanguage.googleapis.com"
             assert request.headers["x-goog-api-key"] == "test-only-key"
             assert body["generationConfig"]["responseMimeType"] == "application/json"
+            assert "temperature" not in body["generationConfig"]
             schema = body["generationConfig"]["responseJsonSchema"]
         else:
             assert request.url.host == "api.openai.com"
             assert request.headers["Authorization"] == "Bearer test-only-key"
+            assert body["temperature"] == 0
             assert body["response_format"]["json_schema"]["strict"] is True
             schema = body["response_format"]["json_schema"]["schema"]
+            assert schema["$defs"]["Evidence"]["properties"]["quote"]["minLength"] == 1
         assert schema["additionalProperties"] is False
         return httpx.Response(200, json=response_body(provider))
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
@@ -101,8 +104,10 @@ def test_timeout(monkeypatch):
     def handler(request):
         raise httpx.ReadTimeout("timeout")
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        with pytest.raises(ProviderError):
+        with pytest.raises(ProviderError) as error:
             AIAdapter("openai", client).extract(pages())
+        assert error.value.code == "TIMEOUT"
+        assert error.value.retryable is True
 
 
 @pytest.mark.parametrize("payload", [

@@ -95,10 +95,10 @@ def create_app(db_path=None):
             adapter = app.state.adapter_factory(body.provider)
             result = adapter.extract(document["pages"])
         except ProviderNotConfigured as exc:
-            raise HTTPException(503, str(exc)) from exc
+            raise HTTPException(503, str(exc), headers={"X-Provider-Error-Code": exc.code}) from None
         except ProviderError as exc:
             documents.record(document_id, body.provider, adapter.model, None)
-            raise HTTPException(502, str(exc)) from exc
+            raise HTTPException(502, str(exc), headers={"X-Provider-Error-Code": exc.code}) from None
         documents.record(document_id, body.provider, adapter.model, result)
         return documents.get(document_id)
 

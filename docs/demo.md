@@ -67,7 +67,7 @@ record the missing receipt in Master data and select **Rerun checks** on the run
 ## Gemini securely
 
 Export **`GEMINI_API_KEY`** only in the backend environment. Optional model selection
-is **`GEMINI_MODEL`**, default `gemini-2.5-flash`. Restart the server after configuring
+is **`GEMINI_MODEL`**, default `gemini-3.5-flash-lite`. Restart the server after configuring
 it. The indicator reads a readiness boolean; it does not prove provider authorization.
 Do not put a key in a `VITE_*` variable, frontend `.env`, source code, or screenshots.
 See `.env.example` and `docs/phase4.md` for network and provider details. `.env` files

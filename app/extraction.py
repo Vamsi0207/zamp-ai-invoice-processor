@@ -11,6 +11,9 @@ from pydantic import Field, ValidationError, field_validator
 from .schemas import Model
 
 
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+
 class ExtractionLine(Model):
     line_reference: str | None
     description: str | None
@@ -69,11 +72,65 @@ class ExtractRequest(Model):
 
 
 class ProviderError(Exception):
-    pass
+    """Safe metadata: never retain upstream bodies, headers or request objects."""
+
+    def __init__(self, message, *, code="PROVIDER_ERROR", http_status=None, retryable=False):
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status
+        self.retryable = retryable
+
+    def details(self):
+        return {"code": self.code, "http_status": self.http_status, "retryable": self.retryable}
 
 
 class ProviderNotConfigured(ProviderError):
-    pass
+    def __init__(self, message):
+        super().__init__(message, code="PROVIDER_NOT_CONFIGURED")
+
+
+class InvalidProviderResponse(ProviderError):
+    def __init__(self, message="Provider returned an invalid or incomplete extraction"):
+        super().__init__(message, code="INVALID_RESPONSE")
+
+
+def http_failure(status):
+    errors = {
+        400: ("INVALID_REQUEST", "Provider rejected the request; check the model and supported request schema", False),
+        401: ("AUTHENTICATION_FAILED", "Provider authentication failed; check backend credential configuration", False),
+        403: ("ACCESS_DENIED", "Provider denied access to this operation or model", False),
+        404: ("MODEL_UNAVAILABLE", "Provider model is unavailable for this account or endpoint; select an accessible model", False),
+        429: ("RATE_LIMITED", "Provider rate limit or quota exceeded; check quota before retrying", True),
+        503: ("SERVICE_UNAVAILABLE", "Provider is temporarily unavailable; retry later", True),
+    }
+    code, message, retryable = errors.get(status, (
+        "UPSTREAM_ERROR", "Provider returned an unsuccessful HTTP response", 500 <= status < 600))
+    return ProviderError(message, code=code, http_status=status, retryable=retryable)
+
+
+def gemini_response_schema():
+    """Project provider hints; original Pydantic/evidence validation stays authoritative."""
+    source = ExtractionResult.model_json_schema()
+    allowed = {"type", "format", "title", "description", "enum", "minItems", "maxItems",
+               "minimum", "maximum", "required", "additionalProperties"}
+
+    def project(node, stack=()):
+        if "$ref" in node:
+            reference = node["$ref"]
+            if not reference.startswith("#/$defs/") or reference in stack:
+                raise ProviderNotConfigured("Unsupported internal extraction schema reference")
+            definition = source["$defs"][reference.removeprefix("#/$defs/")]
+            return project({**definition, **{k: v for k, v in node.items() if k != "$ref"}}, (*stack, reference))
+        result = {k: v for k, v in node.items() if k in allowed}
+        if "properties" in node:
+            result["properties"] = {k: project(v, stack) for k, v in node["properties"].items()}
+        if "items" in node:
+            result["items"] = project(node["items"], stack)
+        if "anyOf" in node:
+            result["anyOf"] = [project(item, stack) for item in node["anyOf"]]
+        return result
+
+    return project(source)
 
 
 def normalize(text):
@@ -93,17 +150,17 @@ def validate_evidence(result, pages):
     for evidence in result.evidence:
         quote = normalize(evidence.quote)
         if evidence.field not in fields or quote not in page_text.get(evidence.page, ""):
-            raise ProviderError("Extraction evidence does not match the document")
+            raise InvalidProviderResponse("Extraction evidence does not match the document")
         value = fields[evidence.field]
         if evidence.field.split(".")[-1] in ("total", "tax", "shipping", "discount", "unit_price", "quantity"):
             numbers = re.findall(r"(?<![\w.])-?\d+(?:,\d{3})*(?:\.\d+)?(?![\w.])", quote)
             if not any(Decimal(token.replace(",", "")) == Decimal(str(value)) for token in numbers):
-                raise ProviderError("Numeric evidence does not support the extracted value")
+                raise InvalidProviderResponse("Numeric evidence does not support the extracted value")
         elif normalize(str(value)) not in quote:
-            raise ProviderError("Evidence does not support the extracted value")
+            raise InvalidProviderResponse("Evidence does not support the extracted value")
         supported.add(evidence.field)
     if supported != set(fields):
-        raise ProviderError("Every extracted value requires document evidence")
+        raise InvalidProviderResponse("Every extracted value requires document evidence")
     return result
 
 
@@ -126,7 +183,7 @@ class AIAdapter:
         self.client = client
         self.key = os.getenv("GEMINI_API_KEY" if provider == "gemini" else "OPENAI_API_KEY")
         self.model = os.getenv("GEMINI_MODEL" if provider == "gemini" else "OPENAI_MODEL",
-                               "gemini-2.5-flash" if provider == "gemini" else "gpt-4.1-mini")
+                               DEFAULT_GEMINI_MODEL if provider == "gemini" else "gpt-4.1-mini").strip()
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", self.model):
             raise ProviderNotConfigured("Invalid provider model configuration")
 
@@ -140,8 +197,8 @@ class AIAdapter:
             headers = {"x-goog-api-key": self.key}
             payload = {"systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
                        "contents": [{"role": "user", "parts": [{"text": text}]}],
-                       "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
-                                            "responseJsonSchema": schema}}
+                       "generationConfig": {"responseMimeType": "application/json",
+                                            "responseJsonSchema": gemini_response_schema()}}
         else:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {"Authorization": f"Bearer {self.key}"}
@@ -153,25 +210,31 @@ class AIAdapter:
         client = self.client or httpx.Client(timeout=httpx.Timeout(60, connect=10), follow_redirects=False)
         try:
             response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
+            if not response.is_success:
+                raise http_failure(response.status_code)
             if len(response.content) > 2_000_000:
-                raise ProviderError("Provider response exceeds size limit")
+                raise InvalidProviderResponse("Provider response exceeds size limit")
             data = response.json()
             if self.provider == "gemini":
                 candidate = data["candidates"][0]
                 if candidate.get("finishReason") != "STOP":
-                    raise ProviderError("Provider did not complete extraction")
-                content = "".join(part.get("text", "") for part in candidate["content"]["parts"])
+                    raise InvalidProviderResponse("Provider did not complete extraction")
+                content = "".join(part.get("text", "") for part in candidate["content"]["parts"]
+                                  if not part.get("thought"))
             else:
                 choice = data["choices"][0]
                 if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
-                    raise ProviderError("Provider did not complete extraction")
+                    raise InvalidProviderResponse("Provider did not complete extraction")
                 content = choice["message"]["content"]
             result = ExtractionResult.model_validate_json(content)
             return validate_evidence(result, pages)
-        except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError, ValidationError) as exc:
-            # Do not echo upstream response bodies, headers, or invoice content.
-            raise ProviderError("Provider request failed or returned an invalid extraction") from exc
+        except httpx.TimeoutException:
+            raise ProviderError("Provider request timed out; retry later", code="TIMEOUT", retryable=True) from None
+        except httpx.HTTPError:
+            raise ProviderError("Provider connection failed; check connectivity", code="CONNECTION_ERROR", retryable=True) from None
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError, ValidationError):
+            # Suppress exception chaining: validation errors can contain invoice data.
+            raise InvalidProviderResponse() from None
         finally:
             if own_client:
                 client.close()

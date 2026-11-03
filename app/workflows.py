@@ -223,12 +223,15 @@ class Workflows:
             if isinstance(exc, ProviderNotConfigured):
                 code, detail = "PROVIDER_NOT_CONFIGURED", str(exc)
             elif isinstance(exc, ProviderError):
-                code, detail = "PROVIDER_ERROR", str(exc)
+                code, detail = exc.code, str(exc)
             elif isinstance(exc, DocumentError):
                 code, detail = "PDF_ERROR", str(exc)
             else:
                 code, detail = "INTERNAL_ERROR", f"Stage interrupted by {type(exc).__name__}; retry is safe"
-            self.change(wid, stage, "failed", detail, status="failed", error={"code": code, "stage": stage, "message": detail})
+            error = {"code": code, "stage": stage, "message": detail}
+            if isinstance(exc, ProviderError):
+                error.update(exc.details())
+            self.change(wid, stage, "failed", detail, status="failed", error=error)
 
     def review(self, wid, request):
         with self.database.transaction() as db:
