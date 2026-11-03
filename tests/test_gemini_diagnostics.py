@@ -159,7 +159,7 @@ def test_optional_isolation_changes_one_group_never_resends_same_payload():
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         _, summary = diagnostic.diagnose(client, "test", "gemini-3.5-flash-lite", pages(), isolate=True)
-    assert summary["requests_sent"] == 12
+    assert summary["requests_sent"] == 11  # Removing already-absent array bounds is skipped, not retried.
     assert summary["successful_controlled_differences"] == ["remove_titles"]
     assert summary["root_cause_verified"] is False
     assert baselines == diagnostic.baseline_probes(pages())

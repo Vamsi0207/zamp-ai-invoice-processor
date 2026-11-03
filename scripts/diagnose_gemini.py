@@ -191,7 +191,8 @@ def response_text(response):
 def run_probe(client, url, key, probe, pages):
     result = {"type": "probe", "step": probe.name, "http_status": None, "category": None,
               "schema_conforms": None, "evidence_validated": None, "expectation_passed": None,
-              "difference": probe.difference, "provider_status": None, "provider_field_hints": []}
+              "difference": probe.difference, "provider_status": None, "provider_field_hints": [],
+              "evidence_category": None, "evidence_reason": None}
     try:
         response = client.post(url, headers={"x-goog-api-key": key}, json=probe.body)
         result["http_status"] = response.status_code
@@ -228,10 +229,14 @@ def run_probe(client, url, key, probe, pages):
         result["category"] = "TIMEOUT"
     except httpx.HTTPError:
         result["category"] = "CONNECTION_ERROR"
-    except ProviderError:
+    except ProviderError as error:
         result["category"] = "INVALID_RESPONSE"
+        details = error.details()
+        result["evidence_category"] = details.get("evidence_category")
+        result["evidence_reason"] = details.get("evidence_reason")
     except (ValueError, KeyError, IndexError, TypeError, AttributeError, ValidationError):
         result["category"] = "INVALID_RESPONSE"
+        result["evidence_category"] = "OTHER_SCHEMA_EVIDENCE_MISMATCH"
     return result
 
 
@@ -261,14 +266,17 @@ def diagnose(client, key, model, pages, isolate=False, emit=None):
             run(probe)
     boundary = next((r["step"] for r in baseline_results if r["category"] != "OK"), None)
     http_boundary = next((r["step"] for r in baseline_results if r["http_status"] is not None and r["http_status"] != 200), None)
-    candidates = []
+    candidates, http_accepted = [], []
     for result in results[4:]:
         comparison = baseline_results[1] if result["step"].startswith(("05_", "06_")) else baseline_results[3]
-        if comparison["http_status"] == 400 and result["category"] == "OK":
-            candidates.append(result["difference"])
+        if comparison["http_status"] == 400 and result["http_status"] == 200:
+            http_accepted.append(result["difference"])
+            if result["category"] == "OK":
+                candidates.append(result["difference"])
     summary = {"type": "summary", "requests_sent": len(results), "first_failed_level": boundary,
                "first_http_failure": http_boundary, "isolation_ran": isolation_ran,
                "successful_controlled_differences": candidates, "root_cause_verified": False,
+               "http_accepted_controlled_differences": http_accepted,
                "all_baselines_passed": boundary is None,
                "next_action": "compare_controlled_differences" if candidates else "inspect_failure_boundary" if boundary else "investigate_local_backend_request_differences"}
     if emit:
@@ -276,9 +284,53 @@ def diagnose(client, key, model, pages, isolate=False, emit=None):
     return results, summary
 
 
+def array_bound_probes(pages):
+    """Recreate the two historical maxItems locations independently from local limits.
+
+    Never add a minItems keyword: none existed in the reported failing request.
+    """
+    full = baseline_probes(pages)[3].body
+    source = ExtractionResult.model_json_schema()
+    line_max = source["$defs"]["ExtractedInvoice"]["properties"]["lines"]["maxItems"]
+    evidence_max = source["properties"]["evidence"]["maxItems"]
+    probes = []
+    for name, lines, evidence in (("no_array_bounds", False, False), ("lines_max_only", True, False),
+                                  ("evidence_max_only", False, True), ("both_max_bounds", True, True)):
+        body = copy.deepcopy(full)
+        schema = body["generationConfig"]["responseJsonSchema"]
+        if lines:
+            schema["properties"]["invoice"]["properties"]["lines"]["maxItems"] = line_max
+        if evidence:
+            schema["properties"]["evidence"]["maxItems"] = evidence_max
+        probes.append(Probe(name, body, "full", name))
+    return probes
+
+
+def diagnose_array_bounds(client, key, model, pages, emit=None):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    results = []
+    for probe in array_bound_probes(pages):
+        result = run_probe(client, url, key, probe, pages)
+        results.append(result)
+        if emit:
+            emit(result)
+    # These fields describe HTTP acceptance only, independently of evidence quality.
+    summary = {"type": "array_bound_summary", "requests_sent": len(results),
+               "historical_minItems_count": 0, "historical_maxItems_count": 2,
+               "http_accepted_variants": [r["step"] for r in results if r["http_status"] == 200],
+               "http_400_variants": [r["step"] for r in results if r["http_status"] == 400],
+               "fully_validated_variants": [r["step"] for r in results if r["category"] == "OK"],
+               "root_cause_verified": False, "all_baselines_passed": all(r["category"] == "OK" for r in results)}
+    if emit:
+        emit(summary)
+    return results, summary
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Synthetic-only Gemini request diagnosis. Four calls, at most twelve with --isolate; no retries.")
-    parser.add_argument("--isolate", action="store_true", help="If text succeeds and a structured request returns 400, run up to eight distinct controlled probes")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--isolate", action="store_true", help="If text succeeds and a structured request returns 400, run up to eight distinct controlled probes")
+    mode.add_argument("--array-bounds", action="store_true", help="Four full-schema probes: no bounds, lines max only, evidence max only, both max bounds")
     args = parser.parse_args(argv)
     emit = lambda value: print(json.dumps(value), flush=True)
     try:
@@ -288,7 +340,10 @@ def main(argv=None):
             return 2
         pages = parse_pdf((Path(__file__).resolve().parents[1] / "fixtures/native_invoice.pdf").read_bytes())
         with httpx.Client(timeout=httpx.Timeout(60, connect=10), follow_redirects=False) as client:
-            _, summary = diagnose(client, adapter.key, adapter.model, pages, args.isolate, emit)
+            if args.array_bounds:
+                _, summary = diagnose_array_bounds(client, adapter.key, adapter.model, pages, emit)
+            else:
+                _, summary = diagnose(client, adapter.key, adapter.model, pages, args.isolate, emit)
         return 0 if summary["all_baselines_passed"] else 1
     except ProviderError as error:
         emit({"type": "configuration", "category": error.code, "requests_sent": 0, "root_cause_verified": False})

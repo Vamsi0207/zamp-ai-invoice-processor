@@ -1,5 +1,12 @@
 # Remaining Gemini HTTP 400: evidence before production changes
 
+**Update:** Windows results isolate the emitted `maxItems` group (no `minItems`
+was present). The production projection now omits that group while local limits
+remain. Use [the focused array/evidence guide](gemini-array-evidence.md) and
+`python -m scripts.diagnose_gemini --array-bounds` to test each historical bound
+individually. The following describes the original broader diagnostic; its full
+baseline always follows the current production projection.
+
 The live 400 persists after PR #3. It is **not a verified schema-keyword root cause**.
 This change adds a standalone experiment, not another production schema rewrite.
 The adapter, Pydantic models, evidence validator, human review and financial engine

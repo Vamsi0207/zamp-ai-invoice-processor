@@ -36,12 +36,14 @@ def test_gemini_schema_uses_supported_keywords_preserving_fields_and_nullability
     line = invoice["properties"]["lines"]["items"]
     assert set(line["properties"]) == {"line_reference", "description", "quantity", "unit_price"}
     assert line["properties"]["quantity"]["anyOf"][0]["minimum"] == 1
-    assert invoice["properties"]["lines"]["maxItems"] == 200
+    assert "maxItems" not in invoice["properties"]["lines"]
     evidence = schema["properties"]["evidence"]
-    assert evidence["maxItems"] == 1000
+    assert "maxItems" not in evidence
     assert set(evidence["items"]["required"]) == {"field", "page", "quote"}
     assert evidence["items"]["properties"]["page"]["maximum"] == 20
     assert ExtractionResult.model_json_schema() == original
+    assert original["$defs"]["ExtractedInvoice"]["properties"]["lines"]["maxItems"] == 200
+    assert original["properties"]["evidence"]["maxItems"] == 1000
     assert original["$defs"]["Evidence"]["properties"]["quote"]["minLength"] == 1
     assert original["$defs"]["ExtractedInvoice"]["properties"]["currency"]["anyOf"][0]["pattern"] == "^[A-Z]{3}$"
 
