@@ -8,6 +8,10 @@ Earlier reported tests were not recovered; this repository has a new test suite.
 
 Python 3.12 and Tesseract 5 with English language data are the validated runtimes.
 For Debian/Ubuntu, install OCR with `sudo apt-get install tesseract-ocr tesseract-ocr-eng`.
+For Windows installation, executable discovery and PowerShell commands, see
+[Windows Python and Tesseract setup](docs/windows.md). Set `TESSERACT_CMD` to a full
+executable path when Tesseract is not on PATH. Installing `pytesseract` alone does
+not install the Tesseract executable or its English language data.
 Use the existing checkout; a Git worktree is
 not necessary. Create a virtual environment and install the frozen dependency set:
 

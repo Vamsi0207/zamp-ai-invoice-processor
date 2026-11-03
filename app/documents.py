@@ -2,7 +2,9 @@
 import hashlib
 import json
 import os
+import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 import fitz
@@ -18,6 +20,48 @@ MAX_TEXT = 100_000
 
 class DocumentError(ValueError):
     pass
+
+
+OCR_LOCK = threading.Lock()
+OCR_SETUP_DIAGNOSTIC = (
+    "Tesseract OCR is unavailable. Install Tesseract 5 with English (eng) language data "
+    "and add its directory to PATH, or set TESSERACT_CMD to the full executable path "
+    "(for example C:\\Program Files\\Tesseract-OCR\\tesseract.exe on Windows). "
+    "Restart the backend after changing its environment."
+)
+
+
+def resolve_tesseract():
+    """An explicit command overrides PATH discovery and must not silently fall back."""
+    command = os.getenv("TESSERACT_CMD", "").strip() or "tesseract"
+    executable = shutil.which(command)
+    if executable is None:
+        raise DocumentError(OCR_SETUP_DIAGNOSTIC)
+    return executable
+
+
+def ocr_image(image):
+    # pytesseract's executable selector is global. Scope it to this call and restore
+    # it even on failure, so concurrent application OCR calls cannot switch commands.
+    with OCR_LOCK:
+        previous = pytesseract.pytesseract.tesseract_cmd
+        try:
+            pytesseract.pytesseract.tesseract_cmd = resolve_tesseract()
+            return pytesseract.image_to_string(image, lang="eng", timeout=30).strip()
+        except pytesseract.TesseractNotFoundError as exc:
+            raise DocumentError(OCR_SETUP_DIAGNOSTIC) from exc
+        except pytesseract.TesseractError as exc:
+            raise DocumentError(
+                "Tesseract OCR failed. Verify English (eng) language data is installed "
+                "with tesseract --list-langs and check TESSERACT_CMD."
+            ) from exc
+        except OSError as exc:
+            raise DocumentError(
+                "Tesseract could not be started. Check TESSERACT_CMD, executable permissions "
+                "and that the executable is compatible with this operating system."
+            ) from exc
+        finally:
+            pytesseract.pytesseract.tesseract_cmd = previous
 
 
 def parse_pdf(data):
@@ -44,7 +88,7 @@ def parse_pdf(data):
                     pixmap = page.get_pixmap(matrix=fitz.Matrix(scale, scale), colorspace=fitz.csRGB, alpha=False)
                     image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
                     try:
-                        text = pytesseract.image_to_string(image, lang="eng", timeout=30).strip()
+                        text = ocr_image(image)
                     finally:
                         image.close()
                     method = "ocr"
