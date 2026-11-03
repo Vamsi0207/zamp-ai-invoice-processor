@@ -94,3 +94,8 @@ For Gemini request compatibility, safe error categories and Windows live verific
 see [Gemini integration diagnostics](docs/gemini-integration.md). The default Gemini
 model is `gemini-3.5-flash-lite`; override `GEMINI_MODEL` with a model your account
 can use. No automatic model fallback or paid-call retries are performed.
+
+For a remaining HTTP 400, run `python -m scripts.diagnose_gemini` to compare four
+synthetic requests without changing the adapter. See the
+[PowerShell commands and interpretation guide](docs/gemini-http400-diagnostics.md)
+before optionally enabling the bounded `--isolate` probes.
