@@ -89,3 +89,8 @@ key and run `ZAMP_RUN_LIVE_AI=1 .venv/bin/python -m pytest -q -k live_provider`.
 Do not print keys or commit `.env`. Network access to `generativelanguage.googleapis.com`
 and/or `api.openai.com` is also required. Deprecation warnings from upstream
 Starlette/AnyIO and PyMuPDF are currently non-fatal.
+
+For Gemini request compatibility, safe error categories and Windows live verification,
+see [Gemini integration diagnostics](docs/gemini-integration.md). The default Gemini
+model is `gemini-3.5-flash-lite`; override `GEMINI_MODEL` with a model your account
+can use. No automatic model fallback or paid-call retries are performed.

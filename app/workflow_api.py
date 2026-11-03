@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from .documents import MAX_BYTES
+from .extraction import DEFAULT_GEMINI_MODEL
 from .schemas import Receipt
 from .workflows import Conflict, Provider, RetryRequest, ReviewRequest, Workflows
 
@@ -34,8 +35,8 @@ def install_workflows(app, service, documents):
 
     @router.get("/configuration")
     def configuration():
-        return {"providers": {p: {"configured": bool(os.getenv(key)), "model": os.getenv(model, default)}
-                for p, key, model, default in (("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-2.5-flash"),
+        return {"providers": {p: {"configured": bool(os.getenv(key)), "model": os.getenv(model, default).strip()}
+                for p, key, model, default in (("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
                                                ("openai", "OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4.1-mini"))},
                 "manual_review_available": True}
 
