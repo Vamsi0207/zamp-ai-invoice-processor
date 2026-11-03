@@ -39,13 +39,15 @@ class Service:
                 receipt.id, receipt.po_id, receipt.po_line_id, receipt.quantity))
         return receipt.model_dump()
 
-    def create_invoice(self, invoice):
+    def create_invoice(self, invoice, document_id=None):
         with self.database.transaction() as db:
             cursor = db.execute("""INSERT INTO invoices
                 (vendor_id,number,normalized_number,po_id,currency,total_cents,payload)
                 VALUES (?,?,?,?,?,?,?)""", (invoice.vendor_id, invoice.number,
                 normalize_number(invoice.number), invoice.po_id, invoice.currency,
                 cents(invoice.total), invoice.model_dump_json()))
+            if document_id is not None:
+                db.execute("INSERT INTO invoice_documents VALUES (?,?)", (cursor.lastrowid, document_id))
             return {"id": cursor.lastrowid, **invoice.model_dump(mode="json")}
 
     def process(self, invoice_id, key):

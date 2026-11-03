@@ -5,13 +5,16 @@ Earlier reported tests were not recovered; this repository has a new test suite.
 
 ## Development
 
-Python 3.12 is the validated runtime. Use the existing checkout; a Git worktree is
+Python 3.12 and Tesseract 5 with English language data are the validated runtimes.
+For Debian/Ubuntu, install OCR with `sudo apt-get install tesseract-ocr tesseract-ocr-eng`.
+Use the existing checkout; a Git worktree is
 not necessary. Create a virtual environment and install the frozen dependency set:
 
 ```sh
 python -m venv .venv
 .venv/bin/python -m pip install -r requirements-lock.txt
 .venv/bin/python -m pytest -q
+.venv/bin/python -m scripts.smoke
 .venv/bin/python -m scripts.seed
 ZAMP_DB_PATH=data/demo.sqlite3 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
@@ -39,3 +42,35 @@ Approved, Review, or Rejected results. Run on loopback: this prototype has no au
 
 Each milestone is tested and committed to a dedicated reconstruction branch; `main`
 is not directly overwritten. AI extraction must never bypass financial checks.
+
+## PDF and AI workflow
+
+1. `POST /documents` with multipart field `file` (PDF MIME type and `.pdf` suffix,
+   maximum 10 MiB, 20 pages). Encrypted, corrupt, empty, and unreadable documents
+   are rejected. Storage uses SHA-256 names; repeat uploads reuse the stored result.
+2. `GET /documents/{sha256}` shows per-page native/OCR text and extraction attempts.
+3. Optionally `POST /documents/{sha256}/extract` with `{"provider":"gemini"}` or
+   `{"provider":"openai"}`. Set the corresponding API key and optional model from
+   `.env.example`. These are real HTTPS adapters using schema-constrained JSON.
+   Missing configuration returns 503; upstream failures or invalid evidence return
+   502, never invented extraction results. Provider requests send extracted text;
+   they do not send the PDF binary. Calls may incur provider charges.
+4. Review the facts, quotes, and original PDF yourself. Resolve vendor, PO, and
+   PO-line references against master data; missing fields remain null, not guessed.
+   Submit a complete canonical `Invoice` body to `POST /documents/{sha256}/invoices`.
+   This records its document source; it does not approve or allocate anything.
+5. Process that invoice through `/invoices/{id}/process`. The same deterministic
+   financial checks apply to manually entered and document-derived invoices.
+
+Quotes must exist on the cited page and support the extracted scalar value. This
+checks textual grounding, not document authenticity or semantic correctness; human
+review remains required. No automatically mapped IDs or AI payment decisions.
+
+Real native and image-only PDF fixtures are committed under `fixtures/` and can be
+regenerated with `.venv/bin/python -m scripts.generate_fixtures`. All are visibly
+synthetic. Tests run real local OCR. Provider contract/error tests use HTTP mocks;
+live provider checks are **skipped by default**. To opt in, export the appropriate
+key and run `ZAMP_RUN_LIVE_AI=1 .venv/bin/python -m pytest -q -k live_provider`.
+Do not print keys or commit `.env`. Network access to `generativelanguage.googleapis.com`
+and/or `api.openai.com` is also required. Deprecation warnings from upstream
+Starlette/AnyIO and PyMuPDF are currently non-fatal.

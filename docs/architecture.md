@@ -52,3 +52,43 @@ operational backups, retention policy, and resource isolation for document parse
 Tests cover API validation, partial invoices, cumulative balances, tolerance boundaries,
 receipt shortfalls, duplicates, concurrent competing allocations and retries,
 rollback on an injected allocation failure, and persistent approved-run replay.
+
+## Documents and AI boundary
+
+DocumentStore persists content-addressed PDF files plus SQLite page text/method
+metadata. A temporary file is fully written before an atomic hard-link publishes
+the SHA-256 filename. A crash may leave an unreferenced PDF, never a partially
+published document; an operator can reconcile orphaned files during maintenance.
+PDF bytes and database metadata must be backed up together. Uploaded documents are
+deduplicated by bytes, independently of business duplicate detection.
+
+PyMuPDF extracts native text page by page. Pages with fewer than 30 alphanumeric
+characters use Tesseract OCR at 200 DPI with a 30-second per-page timeout and a
+12-million-pixel rendering ceiling. Documents have a 100,000-character text budget.
+Sparse native text can be OCRed; a misleading long hidden text layer is not detected.
+Parser/AI operations are synchronous threadpool jobs. Production needs process-level
+CPU/memory isolation, request-body limits, rate limits, and a durable background queue.
+These application-level bounds are not a complete hostile-PDF sandbox.
+
+Gemini generateContent and OpenAI chat/completions use schema-constrained JSON with
+nullable missing facts. Every returned non-null scalar requires a page quote that
+exists in extracted text and includes the string or numeric value. Invalid schemas,
+refusals, truncation, unsupported citations, timeouts and upstream errors fail closed.
+There is no provider fallback that fabricates results. API keys are used only in
+headers to fixed provider hosts, never query strings, persisted records or responses.
+TLS verification and inherited proxy/CA configuration remain enabled. The selected
+provider receives invoice text: configure consent/retention before using real data.
+
+Extraction attempts retain provider, model, status and evidence. No AI adapter can
+allocate money. Explicit reviewed-invoice submission creates an immutable invoice
+and document link in one database transaction. Only the deterministic engine can
+approve and allocate it. Evidence checks do not establish that a document is genuine,
+or that a quoted amount is the right business field. Human review is mandatory.
+
+## Operational scope
+
+Schema creation is additive for this initial reconstruction; versioned migrations
+are not implemented. There is no master-data editing, PO close/cancel operation,
+allocation release, credit-note or duplicate-correction workflow. This backend does
+not initiate payments. Synthetic seeds and PDFs support repeatable local validation.
+CI runs the frozen Python dependencies and real English OCR without provider keys.

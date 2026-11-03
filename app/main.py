@@ -1,10 +1,12 @@
 import json
 import sqlite3
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from .db import Database
+from .documents import DocumentStore, MAX_BYTES
+from .extraction import AIAdapter, ExtractRequest, ProviderError, ProviderNotConfigured
 from .schemas import Invoice, ProcessRequest, PurchaseOrder, Receipt, Vendor
 from .service import Service
 
@@ -13,6 +15,8 @@ def create_app(db_path=None):
     app = FastAPI(title="Zamp PS-1 Invoice Processing", version="0.1.0")
     service = Service(Database(db_path))
     app.state.service = service
+    documents = DocumentStore(service.database)
+    app.state.adapter_factory = AIAdapter
 
     @app.exception_handler(sqlite3.IntegrityError)
     async def integrity_error(request: Request, exc):
@@ -64,7 +68,42 @@ def create_app(db_path=None):
                 raise LookupError("Invoice not found")
             runs = [json.loads(r[0]) for r in db.execute(
                 "SELECT result FROM processing_runs WHERE invoice_id=? ORDER BY id", (invoice_id,))]
-            return {"id": invoice_id, "invoice": json.loads(row[0]), "processing_runs": runs}
+            source = db.execute("SELECT document_id FROM invoice_documents WHERE invoice_id=?", (invoice_id,)).fetchone()
+            return {"id": invoice_id, "invoice": json.loads(row[0]), "processing_runs": runs,
+                    "source_document_id": source[0] if source else None}
+
+    @app.post("/documents", status_code=201)
+    def upload(file: UploadFile = File(...)):
+        if file.content_type != "application/pdf" or not (file.filename or "").lower().endswith(".pdf"):
+            raise HTTPException(415, "Upload must be an application/pdf file with a .pdf extension")
+        data = file.file.read(MAX_BYTES + 1)
+        if len(data) > MAX_BYTES:
+            raise HTTPException(413, "PDF exceeds 10 MiB")
+        return documents.save(data)
+
+    @app.get("/documents/{document_id}")
+    def document(document_id: str):
+        return documents.get(document_id)
+
+    @app.post("/documents/{document_id}/extract")
+    def extract(document_id: str, body: ExtractRequest):
+        document = documents.get(document_id)
+        try:
+            adapter = app.state.adapter_factory(body.provider)
+            result = adapter.extract(document["pages"])
+        except ProviderNotConfigured as exc:
+            raise HTTPException(503, str(exc)) from exc
+        except ProviderError as exc:
+            documents.record(document_id, body.provider, adapter.model, None)
+            raise HTTPException(502, str(exc)) from exc
+        documents.record(document_id, body.provider, adapter.model, result)
+        return documents.get(document_id)
+
+    @app.post("/documents/{document_id}/invoices", status_code=201)
+    def reviewed_invoice(document_id: str, body: Invoice):
+        documents.get(document_id)
+        # Explicit submission of the reviewed canonical invoice, not automatic AI mapping.
+        return service.create_invoice(body, document_id=document_id)
 
     return app
 
