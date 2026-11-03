@@ -1,0 +1,16 @@
+{
+  "synthetic": true,
+  "vendor": {"id": "DEMO-VENDOR", "name": "Synthetic Office Supply"},
+  "purchase_order": {
+    "id": "DEMO-PO", "vendor_id": "DEMO-VENDOR", "currency": "USD", "total": "1000.00",
+    "tolerance_enabled": false,
+    "lines": [{"id": "L1", "description": "Office chairs", "quantity": 10, "unit_price": "100.00"}]
+  },
+  "receipt": {"id": "DEMO-RECEIPT", "po_id": "DEMO-PO", "po_line_id": "L1", "quantity": 10},
+  "invoices": [
+    {"vendor_id": "DEMO-VENDOR", "number": "SYN-001", "po_id": "DEMO-PO", "currency": "USD", "total": "400.00",
+     "lines": [{"po_line_id": "L1", "description": "Office chairs", "quantity": 4, "unit_price": "100.00"}]},
+    {"vendor_id": "DEMO-VENDOR", "number": "SYN-002", "po_id": "DEMO-PO", "currency": "USD", "total": "600.00",
+     "lines": [{"po_line_id": "L1", "description": "Office chairs", "quantity": 6, "unit_price": "100.00"}]}
+  ]
+}

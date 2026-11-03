@@ -205,6 +205,15 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local application state; never commit real invoices or databases.
+/data/
+
+# Frontend dependencies and generated verification output.
+node_modules/
+/frontend/dist/
+/frontend/playwright-report/
+/frontend/test-results/
+
 # Ruff stuff:
 .ruff_cache/
 
