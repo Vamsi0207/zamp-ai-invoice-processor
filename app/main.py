@@ -1,8 +1,10 @@
 import json
 import sqlite3
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import Database
 from .documents import DocumentStore, MAX_BYTES
@@ -107,6 +109,9 @@ def create_app(db_path=None):
         return service.create_invoice(body, document_id=document_id)
 
     install_workflows(app, service, documents)
+    frontend = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if frontend.is_dir():
+        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
     return app
 
 

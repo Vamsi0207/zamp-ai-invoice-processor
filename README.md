@@ -1,6 +1,7 @@
 # Zamp PS-1 AI Invoice Processing
 
-Reconstructed FastAPI/SQLite backend. No frontend or Phase 4 implementation.
+React/TypeScript invoice operations application with a FastAPI/SQLite backend.
+Phase 4 connects intake, extraction, matching, human review and financial decisions.
 Earlier reported tests were not recovered; this repository has a new test suite.
 
 ## Development
@@ -16,8 +17,15 @@ python -m venv .venv
 .venv/bin/python -m pytest -q
 .venv/bin/python -m scripts.smoke
 .venv/bin/python -m scripts.seed
+cd frontend && npm ci && npm run build && cd ..
 ZAMP_DB_PATH=data/demo.sqlite3 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
+
+Open `http://127.0.0.1:8000` in your own browser after starting the server. FastAPI
+serves the compiled frontend and same-origin `/api` endpoints. To develop with Vite,
+start the backend as above, then run `cd frontend && npm run dev` in another shell
+and open the Vite address it prints. Its `/api` proxy targets port 8000; override
+`ZAMP_API_TARGET` in the Vite server shell if needed (not a browser credential).
 
 The database defaults to `data/zamp.sqlite3`. Set `ZAMP_DB_PATH` before startup.
 `.env.example` documents configuration; export variables yourself (no automatic
@@ -39,6 +47,9 @@ Approved, Review, or Rejected results. Run on loopback: this prototype has no au
 
 1. Deterministic financial engine, transactional allocations, persistence, API and tests.
 2. PDF validation, native extraction/OCR, real structured AI adapters and evidence.
+3. Phase 4: persistent workflows, React dashboard/history/review, actual stage polling,
+   source evidence and master-data receipt entry. See the [five-minute demo guide](docs/demo.md)
+   and [orchestration contracts / Gemini setup](docs/phase4.md).
 
 Each milestone is tested and committed to a dedicated reconstruction branch; `main`
 is not directly overwritten. AI extraction must never bypass financial checks.

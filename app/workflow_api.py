@@ -1,12 +1,14 @@
 import os
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from .documents import MAX_BYTES
+from .schemas import Receipt
 from .workflows import Conflict, Provider, RetryRequest, ReviewRequest, Workflows
 
 
@@ -41,13 +43,25 @@ def install_workflows(app, service, documents):
     def master_data():
         return workflows.master_data()
 
+    @router.post("/receipts", status_code=201)
+    def receipt(body: Receipt):
+        return service.create_receipt(body)
+
+    @router.get("/samples/{kind}")
+    def sample(kind: Literal["native", "scanned"]):
+        filename = "native_invoice.pdf" if kind == "native" else "scanned_invoice.pdf"
+        return FileResponse(Path(__file__).resolve().parents[1] / "fixtures" / filename,
+                            media_type="application/pdf", filename=f"synthetic_{filename}")
+
     @router.get("/dashboard")
     def dashboard():
         return workflows.dashboard()
 
     @router.get("/workflows")
-    def history(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-        return workflows.history(limit, offset)
+    def history(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0),
+                status: Literal["", "Review", "Approved", "Rejected", "failed", "queued", "processing"] = "",
+                search: str = Query("", max_length=120)):
+        return workflows.history(limit, offset, status, search)
 
     @router.post("/workflows", status_code=202)
     def submit(background: BackgroundTasks, file: UploadFile = File(...),

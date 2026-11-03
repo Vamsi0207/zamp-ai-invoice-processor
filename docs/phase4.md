@@ -7,6 +7,8 @@ New endpoints exist directly and under `/api` for same-origin frontend requests.
 - `POST /api/workflows`: multipart PDF, `provider` (`gemini`, `openai`, or `manual`),
   and required `idempotency_key`. Returns HTTP 202 and the canonical persisted run.
 - `GET /api/workflows?limit=50&offset=0`: paginated history.
+- Optional `status` and `search` query parameters filter history across the database,
+  not just the current page. Search matches filenames or confirmed/draft invoice numbers.
 - `GET /api/workflows/{id}`: stages, timestamps, audit events, document pages,
   evidence, matching issues, review draft, invoice link, final engine result/errors.
 - `GET /api/workflows/{id}/pdf`: original source download.
@@ -18,6 +20,8 @@ New endpoints exist directly and under `/api` for same-origin frontend requests.
 - `GET /api/master-data`: vendors, POs, lines, receipts and current balances.
 - `GET /api/dashboard`: real invoice/workflow counts, decision totals and recent runs.
 - `GET /api/configuration`: provider configured booleans and nonsecret model names.
+- `POST /api/receipts`: validated receipt entry from the master-data screen.
+- `GET /api/samples/native` or `/scanned`: committed synthetic PDF download.
 
 The original backend APIs and financial policy are preserved. The only Service
 change lets invoice creation participate in an existing transaction so the workflow
@@ -71,3 +75,15 @@ Neither provider key is available in the current task. Live AI calls cannot be
 verified. Test-provider contract responses are explicitly mocked in automated tests,
 never served as application decisions or as a demo production mode. Use manual
 review for an honest credential-free demo, or configure Gemini for live extraction.
+
+## Frontend
+
+React/TypeScript, Vite and Tailwind implement overview counts, paginated/filterable
+history, drag/drop intake, persisted stage polling, source text/quotes, matching
+explanations, manual review, immutable confirmed fields, engine decisions, retry,
+receipt entry and audit events. UI API requests use `/api`. Vite proxies those in
+development; FastAPI serves `frontend/dist` if present at startup for a single-origin
+built application. Navigation uses URL hashes so reloadable detail views work with
+static hosting. Polling never fabricates intermediate steps or progress percentages.
+Provider credentials remain server-side; browser configuration
+contains only readiness booleans and model names. See `demo.md` for run commands.

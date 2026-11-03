@@ -1,6 +1,7 @@
 """Exercise the real HTTP server against a disposable synthetic database."""
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -36,6 +37,15 @@ def main():
                     time.sleep(0.1)
                 else:
                     raise RuntimeError("HTTP server readiness timed out")
+                if (ROOT / "frontend/dist/index.html").exists():
+                    index = client.get("/")
+                    assert index.status_code == 200 and '<div id="root">' in index.text
+                    assets = re.findall(r'(?:src|href)="(/assets/[^\"]+)"', index.text)
+                    assert assets
+                    for asset in assets:
+                        assert client.get(asset).status_code == 200
+                    assert client.get("/api/dashboard").status_code == 200
+                    print("Built frontend smoke passed: HTML, compiled assets, same-origin API")
                 data = json.loads((ROOT / "fixtures/synthetic_dataset.json").read_text())
                 for route, record in (("/vendors", data["vendor"]), ("/purchase-orders", data["purchase_order"]),
                                       ("/receipts", data["receipt"])):

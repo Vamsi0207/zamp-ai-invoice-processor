@@ -47,3 +47,51 @@ using a disposable database. The server was stopped after validation.
 This environment's command sandbox prevents the sockets used by the FastAPI test
 client; tests and the HTTP smoke were run with approved local socket permissions.
 GitHub CI configuration is included but its execution is not claimed here.
+
+## Phase 4
+
+Backend orchestration milestone: **108 passed, 2 skipped** before commit `51de587`.
+That commit was pushed to `phase4/invoice-automation`, fetched back, and verified.
+
+Final backend suite after UI-support APIs: **110 passed, 2 skipped**, six existing
+upstream deprecation warnings. All earlier tests remain in place. New coverage
+includes durable stages/history, exact/ambiguous matching, confirmed review,
+upload/business duplicates, partial invoicing, excessive amounts, missing POs,
+concurrent confirmation, safe recovery after a committed allocation, persisted
+provider/PDF failures, manual retry, receipt shortfalls, filters and validation audit.
+
+Frontend: **7 Vitest tests passed**; TypeScript checking and Vite production build
+passed. Vitest HTTP-contract tests explicitly mock fetch. They check request paths,
+validation messages, multipart uploads, no invented timeline progress and retry keys.
+
+Browser: **3 Playwright tests passed in real system Chromium**, using real HTTP
+requests to Vite and FastAPI/SQLite. Covered approval, reload, byte-duplicate replay,
+partial invoicing, business duplicate/excessive-value rejection, missing-PO review,
+provider-not-configured failure and manual retry, history filtering, upload modal,
+drag-and-drop, receipt validation errors, desktop and mobile layout. No financial
+decisions are mocked. The isolated test server intentionally has no provider keys.
+
+Actual built-app smoke also passed: FastAPI served the HTML and compiled CSS/JS
+assets and responded to same-origin `/api/dashboard`; the prior financial/PDF smoke
+passed. Screenshots in `docs/screenshots/` are captures from synthetic browser tests.
+
+Commands executed from the repository root (frontend commands use `frontend/`):
+
+```sh
+.venv/bin/python -m pytest -q
+.venv/bin/python -m scripts.smoke
+cd frontend
+npm run build
+npm test
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
+```
+
+Gemini/OpenAI credentials remain absent. The two live provider checks are skipped;
+the Gemini adapter contract is exercised with explicit mocked HTTP responses in
+backend orchestration tests. No live-provider success or GitHub CI success is claimed.
+
+The environment permits Git pushes but currently denies `api.github.com` requests.
+Both `gh pr list` (GraphQL) and REST pull-list operations returned Forbidden. A draft
+network addition for `api.github.com` was saved without changing other destinations;
+it requires review/save and publication in environment settings before activation.
+PR API authentication remains unverified until that network prerequisite is applied.

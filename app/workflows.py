@@ -292,10 +292,19 @@ class Workflows:
                 self.event(db, row["id"], stage, "failed", error["message"])
             return [r[0] for r in db.execute("SELECT id FROM workflows WHERE status='queued'")]
 
-    def history(self, limit=50, offset=0):
+    def history(self, limit=50, offset=0, status=None, search=""):
+        clauses, values = [], []
+        if status:
+            clauses.append("status=?")
+            values.append(status)
+        if search:
+            pattern = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            clauses.append("(filename LIKE ? ESCAPE '\\' OR json_extract(draft,'$.number') LIKE ? ESCAPE '\\')")
+            values.extend((pattern, pattern))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self.database.connect() as db:
-            ids = [r[0] for r in db.execute("SELECT id FROM workflows ORDER BY created_at DESC,rowid DESC LIMIT ? OFFSET ?", (limit, offset))]
-            total = db.execute("SELECT COUNT(*) FROM workflows").fetchone()[0]
+            ids = [r[0] for r in db.execute("SELECT id FROM workflows" + where + " ORDER BY created_at DESC,rowid DESC LIMIT ? OFFSET ?", (*values, limit, offset))]
+            total = db.execute("SELECT COUNT(*) FROM workflows" + where, values).fetchone()[0]
         return {"items": [self.get(wid, include_document=False) for wid in ids], "total": total}
 
     def dashboard(self):

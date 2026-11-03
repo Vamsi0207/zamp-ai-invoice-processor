@@ -209,3 +209,24 @@ def test_ambiguous_vendor_name_never_auto_selects(seeded):
     draft, matching = seeded.app.state.workflows.match({"invoice": {"vendor_name": "Synthetic Supply Co"}})
     assert draft["vendor_id"] == ""
     assert "VENDOR_MAPPING_REQUIRED" in matching["issues"]
+
+
+def test_history_filters_search_and_sample_downloads(seeded):
+    run = upload_run(seeded)
+    assert seeded.get("/api/workflows?status=Review&search=invoice").json()["total"] == 1
+    assert seeded.get("/api/workflows?status=Approved").json()["total"] == 0
+    assert seeded.get("/api/workflows?search=%25").json()["total"] == 0
+    confirm(seeded, run["id"])
+    assert seeded.get("/api/workflows?status=Approved&search=INV-001").json()["total"] == 1
+    assert seeded.get("/api/workflows?status=invented").status_code == 422
+    assert seeded.get("/api/samples/native").content.startswith(b"%PDF-")
+    assert seeded.get("/api/samples/scanned").content.startswith(b"%PDF-")
+    assert seeded.get("/api/samples/secret").status_code == 422
+
+
+def test_review_validation_failure_is_audited(seeded):
+    run = upload_run(seeded)
+    assert confirm(seeded, run["id"], invoice(po_id=None)).status_code == 422
+    events = seeded.get(f"/api/workflows/{run['id']}").json()["events"]
+    assert events[-1]["status"] == "submission_rejected"
+    assert "existing purchase order" in events[-1]["detail"]
