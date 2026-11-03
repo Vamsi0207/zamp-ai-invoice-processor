@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 
 from .engine import evaluate
 from .schemas import Invoice, cents
@@ -39,8 +40,8 @@ class Service:
                 receipt.id, receipt.po_id, receipt.po_line_id, receipt.quantity))
         return receipt.model_dump()
 
-    def create_invoice(self, invoice, document_id=None):
-        with self.database.transaction() as db:
+    def create_invoice(self, invoice, document_id=None, db=None):
+        with (nullcontext(db) if db is not None else self.database.transaction()) as db:
             cursor = db.execute("""INSERT INTO invoices
                 (vendor_id,number,normalized_number,po_id,currency,total_cents,payload)
                 VALUES (?,?,?,?,?,?,?)""", (invoice.vendor_id, invoice.number,

@@ -9,6 +9,7 @@ from .documents import DocumentStore, MAX_BYTES
 from .extraction import AIAdapter, ExtractRequest, ProviderError, ProviderNotConfigured
 from .schemas import Invoice, ProcessRequest, PurchaseOrder, Receipt, Vendor
 from .service import Service
+from .workflow_api import install_workflows
 
 
 def create_app(db_path=None):
@@ -105,6 +106,7 @@ def create_app(db_path=None):
         # Explicit submission of the reviewed canonical invoice, not automatic AI mapping.
         return service.create_invoice(body, document_id=document_id)
 
+    install_workflows(app, service, documents)
     return app
 
 
