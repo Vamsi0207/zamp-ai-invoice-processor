@@ -1,5 +1,10 @@
 # Gemini integration: request contract and verification
 
+**Follow-up:** live HTTP 400 persists after this compatibility change. The responsible
+field is still unverified. Use [sequential HTTP 400 diagnostics](gemini-http400-diagnostics.md)
+to collect controlled request evidence; do not assume another schema rewrite or
+switching to Interactions will resolve it.
+
 ## Investigation and scope
 
 The adapter previously sent raw `ExtractionResult.model_json_schema()` plus
