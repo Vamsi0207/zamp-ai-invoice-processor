@@ -1,97 +1,83 @@
-# Reconstruction validation
+# Submission validation and evidence provenance
 
-Validated with Python 3.12.14 and Tesseract 5.5.0 on Linux.
-These are newly implemented tests; none of the earlier reported 84 tests were recovered.
+Submission pass: 2026-11-05. Audit baseline: main `9499c8e` (PR #6 merged).
+Verification ran on `docs/submission-readiness`, including the preserved over-budget
+and duplicate-fixture tests and the platform-aware Playwright launcher. Older counts
+and diagnostic history are [archived separately](history/validation-history.md).
 
-## Milestone 1
+## Automated checks actually executed in Codex
 
-`.venv/bin/python -m pytest -q`: **42 passed**, one upstream deprecation warning.
-Includes concurrent allocations/retries, transaction rollback, tolerance boundaries,
-partial invoices, receipts, vendor/PO checks, duplicates, API schemas, audit history,
-multi-line tax/shipping/discount arithmetic, persistence and synthetic dataset replay.
+Environment: **Linux, Python 3.12.14, Node.js 24.22.1, Tesseract 5.5.0**, system
+Chromium. These results are not a new Windows installation test or live-provider test.
 
-Committed and pushed separately as `e907c79` on `reconstruction/ps1-backend`.
-Fetched from GitHub and verified application, lockfile, fixture and test paths.
+| Command | Actual result |
+| --- | --- |
+| `.venv/bin/python -m pytest -q` | **223 passed, 2 skipped**, 6 upstream deprecation warnings |
+| `.venv/bin/python -m pip check` | No broken requirements |
+| `npm ci` in `frontend/` | Frozen frontend installation succeeded |
+| `npm test` in `frontend/` | **7 passed**, one Vitest test file |
+| `npm run build` in `frontend/` | TypeScript check and Vite production build passed |
+| `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e` | **3 passed**, real browser/HTTP with isolated SQLite |
+| `.venv/bin/python -m scripts.smoke` | Built HTML/assets, same-origin API and financial/PDF HTTP smoke passed |
+| `git diff --check` | Passed |
+| Ignore-rule checks | Secret variants, DB/WAL files and browser output ignored; `.env.example` trackable |
 
-## Milestone 2
+The backend warnings are the Starlette/AnyIO deprecated BlockingPortal alias and
+PyMuPDF SWIG type metadata warnings. Browser startup also emits a non-failing
+NO_COLOR/FORCE_COLOR warning. No tests were disabled or assertions removed to obtain
+these results. Existing test coverage was retained.
 
-`.venv/bin/python -m pytest -q`: **90 passed, 2 skipped**, six upstream warnings
-(Starlette/AnyIO alias and PyMuPDF SWIG types). No failed tests.
+The two skips are the optional live Gemini/OpenAI tests: they require a key and
+`ZAMP_RUN_LIVE_AI=1`. Codex has no Gemini key and did **not** execute authenticated
+model extraction in this pass. Provider contract/error tests use explicit HTTP
+mocks. Real local Tesseract OCR ran for scanned and mixed-page fixtures.
 
-Actual local OCR executed against image-only and mixed native/scanned PDFs. Upload
-validation, limits, encrypted/corrupt documents, OCR errors/timeouts, persistent
-content hashes, evidence validation, provider request contracts/errors, and document
-provenance through deterministic financial processing are covered.
+Playwright exercised real frontend/FastAPI requests for manual review/approval,
+identical-file reuse, partial invoices, business duplicates, excessive values,
+missing PO, configured-key absence/manual retry, filtering, drag/drop, modal upload,
+receipt validation, and desktop/mobile layout. Its server deliberately clears keys;
+its financial decisions are real engine results, not AI mocks.
 
-Provider tests use explicit HTTP mocks. The two optional live API tests were skipped
-because live opt-in and credentials were not available. Gemini/OpenAI key and model
-variables were absent; no secret values were printed. Live provider compatibility,
-credentials, network access, and extraction quality remain unverified.
+The new fixture checks parse real PDF bytes and supply verified synthetic facts
+locally. They do not claim to execute Gemini. The over-budget test starts after a
+real engine-approved $400 SYN-001 and asserts all three actual violations and the
+unchanged $400 allocation/$600 balance. The duplicate test asserts distinct hashes
+and `DUPLICATE_INVOICE` as its sole rejection reason.
 
-Additional commands:
+## Separately observed GitHub CI
 
-```sh
-.venv/bin/python -m scripts.seed    # executed twice, idempotent
-.venv/bin/python -m scripts.generate_fixtures
-.venv/bin/python -m pip install --no-index -r requirements-lock.txt
-.venv/bin/python -m pip check
-.venv/bin/python -m scripts.smoke
-git diff --check
-```
+The latest audited main run, on `9499c8e`, completed successfully:
+[Backend tests workflow](https://github.com/Vamsi0207/zamp-ai-invoice-processor/actions/runs/42069047449).
+The workflow includes backend checks, frontend tests/build and browser checks on
+Ubuntu. This is an API-observed CI outcome for that commit, not the local counts
+above or a claim about an uncompleted submission PR run.
 
-Frozen installation requirements were already satisfied; pip check reported no
-broken requirements. The real Uvicorn HTTP smoke passed health, master data, PDF
-upload, reviewed invoice, approval, safe retry, PO balance and source provenance,
-using a disposable database. The server was stopped after validation.
+## Owner-reported Windows live demonstration
 
-This environment's command sandbox prevents the sockets used by the FastAPI test
-client; tests and the HTTP smoke were run with approved local socket permissions.
-GitHub CI configuration is included but its execution is not claimed here.
+The owner reports real Gemini extraction with **`gemini-3.1-flash-lite`** and the
+following manually observed React flows. These are **not automated CI results**:
 
-## Phase 4
+| Scenario | Reported result | Reported remaining PO balance |
+| --- | --- | --- |
+| SYN-001, 4 chairs/$400 | Approved | $600 |
+| Identical PDF again | Existing run reused, no second allocation | $600 |
+| Distinct PDF, same SYN-001/vendor | Rejected as business duplicate | $600 |
+| Unique SYN-002, 7 chairs/$700 | Rejected for amount, ordered quantity and receipts | $600 |
 
-Backend orchestration milestone: **108 passed, 2 skipped** before commit `51de587`.
-That commit was pushed to `phase4/invoice-automation`, fetched back, and verified.
+These reports supersede a blanket statement that live Gemini has never worked.
+They do not establish availability for a new evaluator's account, repeatability on
+every model, or live OpenAI success. Earlier diagnostic notes mostly used
+`gemini-3.5-flash-lite`; those historical failures must not be attributed to the
+verified demo model without evidence.
 
-Final backend suite after UI-support APIs: **110 passed, 2 skipped**, six existing
-upstream deprecation warnings. All earlier tests remain in place. New coverage
-includes durable stages/history, exact/ambiguous matching, confirmed review,
-upload/business duplicates, partial invoicing, excessive amounts, missing POs,
-concurrent confirmation, safe recovery after a committed allocation, persisted
-provider/PDF failures, manual retry, receipt shortfalls, filters and validation audit.
+## Windows verification scope
 
-Frontend: **7 Vitest tests passed**; TypeScript checking and Vite production build
-passed. Vitest HTTP-contract tests explicitly mock fetch. They check request paths,
-validation messages, multipart uploads, no invented timeline progress and retry keys.
+PowerShell setup commands were checked against actual variable names, entrypoints,
+seeding behavior and native executable discovery. The owner has a working Windows
+application, but this pass could not execute a fresh Windows setup. The Playwright
+launcher now selects the Windows virtual-environment executable; its Windows branch
+needs an actual Windows run. Linux e2e success does not substitute for that run.
 
-Browser: **3 Playwright tests passed in real system Chromium**, using real HTTP
-requests to Vite and FastAPI/SQLite. Covered approval, reload, byte-duplicate replay,
-partial invoicing, business duplicate/excessive-value rejection, missing-PO review,
-provider-not-configured failure and manual retry, history filtering, upload modal,
-drag-and-drop, receipt validation errors, desktop and mobile layout. No financial
-decisions are mocked. The isolated test server intentionally has no provider keys.
-
-Actual built-app smoke also passed: FastAPI served the HTML and compiled CSS/JS
-assets and responded to same-origin `/api/dashboard`; the prior financial/PDF smoke
-passed. Screenshots in `docs/screenshots/` are captures from synthetic browser tests.
-
-Commands executed from the repository root (frontend commands use `frontend/`):
-
-```sh
-.venv/bin/python -m pytest -q
-.venv/bin/python -m scripts.smoke
-cd frontend
-npm run build
-npm test
-PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
-```
-
-Gemini/OpenAI credentials remain absent. The two live provider checks are skipped;
-the Gemini adapter contract is exercised with explicit mocked HTTP responses in
-backend orchestration tests. No live-provider success or GitHub CI success is claimed.
-
-The environment permits Git pushes but currently denies `api.github.com` requests.
-Both `gh pr list` (GraphQL) and REST pull-list operations returned Forbidden. A draft
-network addition for `api.github.com` was saved without changing other destinations;
-it requires review/save and publication in environment settings before activation.
-PR API authentication remains unverified until that network prerequisite is applied.
+Before the final presentation, follow [Windows setup](windows.md), use a fresh seeded
+state and execute [A/B/C in order](demo-walkthrough.md). If provider access is absent,
+label the supported manual mode accurately instead of presenting it as live AI.

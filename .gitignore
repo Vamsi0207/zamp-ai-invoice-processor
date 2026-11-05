@@ -151,6 +151,8 @@ activemq-data/
 
 # Environments
 .env
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -207,6 +209,13 @@ tempCodeRunnerFile.py
 
 # Local application state; never commit real invoices or databases.
 /data/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+/gemini-diagnostic*.jsonl
 
 # Frontend dependencies and generated verification output.
 node_modules/

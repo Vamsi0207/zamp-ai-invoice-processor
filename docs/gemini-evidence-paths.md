@@ -1,5 +1,11 @@
 # Canonical Gemini evidence paths
 
+> Historical troubleshooting context: these experiments describe earlier Gemini
+> integration work, mostly with `gemini-3.5-flash-lite`. The current submission demo
+> explicitly selects the owner-verified `gemini-3.1-flash-lite`. Past statements about
+> absent Codex credentials or pending live checks are not current Windows failure
+> claims. See [current validation](validation.md) and [setup](windows.md).
+
 The supplied Windows run returned HTTP 200 and passed Pydantic, but evidence failed
 with `UNEXPECTED_INVOICE_PREFIX`. This identifies a path-format mismatch: the model
 returned response-root paths such as `invoice.total`, while the existing source

@@ -1,5 +1,8 @@
 # Phase 4: invoice operations
 
+API/implementation reference. For current evaluator setup use [Windows setup](windows.md),
+the [submission walkthrough](demo-walkthrough.md) and [validation](validation.md).
+
 ## Persistent workflow API
 
 New endpoints exist directly and under `/api` for same-origin frontend requests.
@@ -63,7 +66,9 @@ in-workflow PDF/provider/processing failures retain a stage, code and safe messa
 ## Gemini configuration
 
 The backend reads **`GEMINI_API_KEY`** and **`GEMINI_MODEL`** (default
-`gemini-3.5-flash-lite`), exactly as `.env.example` and `AIAdapter` specify. OpenAI reads
+`gemini-3.5-flash-lite` if unset). The submission `.env.example` recommends the
+explicit owner-verified `gemini-3.1-flash-lite` selection; it is not auto-loaded.
+OpenAI reads
 `OPENAI_API_KEY` / `OPENAI_MODEL`. Export values only in the backend shell or secret
 settings, restart the server, and inspect the configuration indicator. `.env` is
 ignored and not automatically loaded; never use `VITE_` prefixes for credentials.
@@ -71,10 +76,11 @@ Gemini needs HTTPS access to `generativelanguage.googleapis.com`; OpenAI needs
 `api.openai.com`. Existing proxy/CA settings are preserved. Keys stay in backend
 request headers. The frontend receives only readiness booleans and model names.
 
-Neither provider key is available in the current task. Live AI calls cannot be
-verified. Test-provider contract responses are explicitly mocked in automated tests,
-never served as application decisions or as a demo production mode. Use manual
-review for an honest credential-free demo, or configure Gemini for live extraction.
+The original Phase 4 Codex run had no provider key, and its provider contract tests
+used explicit HTTP mocks. The owner now reports a working local Windows Gemini
+demo using `gemini-3.1-flash-lite`; this is separate from automated evidence.
+See [current validation](validation.md). Manual review remains the credential-free
+alternative, with no invented AI fields, citations or financial decisions.
 
 ## Frontend
 

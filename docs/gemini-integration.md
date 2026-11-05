@@ -1,5 +1,11 @@
 # Gemini integration: request contract and verification
 
+> Historical troubleshooting context: these experiments describe earlier Gemini
+> integration work, mostly with `gemini-3.5-flash-lite`. The current submission demo
+> explicitly selects the owner-verified `gemini-3.1-flash-lite`. Past statements about
+> absent Codex credentials or pending live checks are not current Windows failure
+> claims. See [current validation](validation.md) and [setup](windows.md).
+
 **Follow-up:** live HTTP 400 persists after this compatibility change. The responsible
 group is now isolated by supplied Windows results: the schema emitted no `minItems`,
 and removing its two `maxItems` hints allowed HTTP 200 but failed evidence checks.
@@ -48,8 +54,10 @@ is also useful when verifying from Windows.
   unknown fields, missing facts and unsupported citations are rejected, never relaxed
   or silently repaired. Thoughts are not concatenated into the final JSON response.
 - Gemini temperature is omitted; OpenAI's existing request schema/temperature remain.
-- The default model is `gemini-3.5-flash-lite`, with the same default shown by the
-  configuration API and `.env.example`. This avoids the reported new-user restriction
+- The application fallback model is `gemini-3.5-flash-lite` when `GEMINI_MODEL` is
+  unset; the configuration API reflects the selected value. The submission
+  `.env.example` recommends an explicit `gemini-3.1-flash-lite`, reported verified
+  locally by the owner. The earlier fallback change avoided the reported new-user restriction
   on `gemini-2.5-flash`, but does not guarantee access or capacity for every account.
   Explicit `GEMINI_MODEL` overrides are still supported; surrounding whitespace is
   stripped and unsafe model paths remain invalid. Supply the ID without `models/`.

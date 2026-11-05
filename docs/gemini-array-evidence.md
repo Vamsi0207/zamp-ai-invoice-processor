@@ -1,5 +1,11 @@
 # Gemini array bounds and safe evidence failures
 
+> Historical troubleshooting context: these experiments describe earlier Gemini
+> integration work, mostly with `gemini-3.5-flash-lite`. The current submission demo
+> explicitly selects the owner-verified `gemini-3.1-flash-lite`. Past statements about
+> absent Codex credentials or pending live checks are not current Windows failure
+> claims. See [current validation](validation.md) and [setup](windows.md).
+
 **Follow-up:** the latest Windows failure is `UNEXPECTED_INVOICE_PREFIX`.
 The [canonical-path fix](gemini-evidence-paths.md) makes instructions explicit and
 adds a narrow Gemini-only alias boundary. All source-verification checks remain.
