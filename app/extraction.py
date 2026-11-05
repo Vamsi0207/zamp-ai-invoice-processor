@@ -90,8 +90,26 @@ class ProviderNotConfigured(ProviderError):
 
 
 class InvalidProviderResponse(ProviderError):
-    def __init__(self, message="Provider returned an invalid or incomplete extraction"):
+    def __init__(self, message="Provider returned an invalid or incomplete extraction", *, validation_stage="response"):
         super().__init__(message, code="INVALID_RESPONSE")
+        self.validation_stage = validation_stage
+
+    def details(self):
+        return {**super().details(), "validation_stage": self.validation_stage,
+                "evidence_category": "OTHER_SCHEMA_EVIDENCE_MISMATCH"}
+
+
+class EvidenceValidationError(InvalidProviderResponse):
+    """Only static reason codes; never include model paths, values, pages or quotes."""
+
+    def __init__(self, category, reason):
+        super().__init__("Provider evidence failed source validation", validation_stage="evidence")
+        self.evidence_category = category
+        self.evidence_reason = reason
+
+    def details(self):
+        return {**super().details(), "evidence_category": self.evidence_category,
+                "evidence_reason": self.evidence_reason}
 
 
 def http_failure(status):
@@ -111,7 +129,9 @@ def http_failure(status):
 def gemini_response_schema():
     """Project provider hints; original Pydantic/evidence validation stays authoritative."""
     source = ExtractionResult.model_json_schema()
-    allowed = {"type", "format", "title", "description", "enum", "minItems", "maxItems",
+    # Windows controlled results isolate maxItems (no minItems were emitted).
+    # Keep local Pydantic array bounds and every other provider hint unchanged.
+    allowed = {"type", "format", "title", "description", "enum", "minItems",
                "minimum", "maximum", "required", "additionalProperties"}
 
     def project(node, stack=()):
@@ -140,27 +160,40 @@ def normalize(text):
 def validate_evidence(result, pages):
     page_text = {p["page"]: normalize(p["text"]) for p in pages}
     fields = {}
+    known_paths = set()
     for key, value in result.invoice.model_dump().items():
         if key == "lines":
             for index, line in enumerate(value):
+                known_paths.update(f"lines.{index}.{k}" for k in line)
                 fields.update({f"lines.{index}.{k}": v for k, v in line.items() if v is not None})
-        elif value is not None:
-            fields[key] = value
+        else:
+            known_paths.add(key)
+            if value is not None:
+                fields[key] = value
     supported = set()
     for evidence in result.evidence:
         quote = normalize(evidence.quote)
-        if evidence.field not in fields or quote not in page_text.get(evidence.page, ""):
-            raise InvalidProviderResponse("Extraction evidence does not match the document")
+        if evidence.field not in known_paths:
+            reason = "UNEXPECTED_INVOICE_PREFIX" if evidence.field.startswith("invoice.") and evidence.field[8:] in known_paths else "INVALID_FIELD_PATH"
+            raise EvidenceValidationError("INVALID_FIELD_OR_PAGE_REFERENCE", reason)
+        if evidence.field not in fields:
+            raise EvidenceValidationError("OTHER_SCHEMA_EVIDENCE_MISMATCH", "EVIDENCE_WITHOUT_EXTRACTED_VALUE")
+        if evidence.page not in page_text:
+            raise EvidenceValidationError("INVALID_FIELD_OR_PAGE_REFERENCE", "INVALID_PAGE_REFERENCE")
+        if quote not in page_text[evidence.page]:
+            if any(quote in text for number, text in page_text.items() if number != evidence.page):
+                raise EvidenceValidationError("INVALID_FIELD_OR_PAGE_REFERENCE", "QUOTE_ON_DIFFERENT_PAGE")
+            raise EvidenceValidationError("UNSUPPORTED_SOURCE_QUOTE", "QUOTE_NOT_IN_SOURCE")
         value = fields[evidence.field]
         if evidence.field.split(".")[-1] in ("total", "tax", "shipping", "discount", "unit_price", "quantity"):
             numbers = re.findall(r"(?<![\w.])-?\d+(?:,\d{3})*(?:\.\d+)?(?![\w.])", quote)
             if not any(Decimal(token.replace(",", "")) == Decimal(str(value)) for token in numbers):
-                raise InvalidProviderResponse("Numeric evidence does not support the extracted value")
+                raise EvidenceValidationError("INCORRECT_NUMERIC_EVIDENCE", "NUMERIC_VALUE_NOT_SUPPORTED")
         elif normalize(str(value)) not in quote:
-            raise InvalidProviderResponse("Evidence does not support the extracted value")
+            raise EvidenceValidationError("OTHER_SCHEMA_EVIDENCE_MISMATCH", "FIELD_VALUE_NOT_SUPPORTED")
         supported.add(evidence.field)
     if supported != set(fields):
-        raise InvalidProviderResponse("Every extracted value requires document evidence")
+        raise EvidenceValidationError("MISSING_FIELD_EVIDENCE", "NON_NULL_FIELD_WITHOUT_EVIDENCE")
     return result
 
 
@@ -208,6 +241,7 @@ class AIAdapter:
                            "name": "invoice_extraction", "strict": True, "schema": schema}}}
         own_client = self.client is None
         client = self.client or httpx.Client(timeout=httpx.Timeout(60, connect=10), follow_redirects=False)
+        response = None
         try:
             response = client.post(url, json=payload, headers=headers)
             if not response.is_success:
@@ -226,15 +260,25 @@ class AIAdapter:
                 if choice.get("finish_reason") != "stop" or choice["message"].get("refusal"):
                     raise InvalidProviderResponse("Provider did not complete extraction")
                 content = choice["message"]["content"]
-            result = ExtractionResult.model_validate_json(content)
+            try:
+                result = ExtractionResult.model_validate_json(content)
+            except ValidationError:
+                raise InvalidProviderResponse("Provider extraction failed Pydantic validation", validation_stage="pydantic") from None
             return validate_evidence(result, pages)
+        except InvalidProviderResponse as error:
+            if response is not None:
+                error.http_status = response.status_code
+            raise
         except httpx.TimeoutException:
             raise ProviderError("Provider request timed out; retry later", code="TIMEOUT", retryable=True) from None
         except httpx.HTTPError:
             raise ProviderError("Provider connection failed; check connectivity", code="CONNECTION_ERROR", retryable=True) from None
         except (KeyError, IndexError, TypeError, AttributeError, ValueError, ValidationError):
             # Suppress exception chaining: validation errors can contain invoice data.
-            raise InvalidProviderResponse() from None
+            error = InvalidProviderResponse()
+            if response is not None:
+                error.http_status = response.status_code
+            raise error from None
         finally:
             if own_client:
                 client.close()

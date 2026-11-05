@@ -1,9 +1,10 @@
 # Gemini integration: request contract and verification
 
 **Follow-up:** live HTTP 400 persists after this compatibility change. The responsible
-field is still unverified. Use [sequential HTTP 400 diagnostics](gemini-http400-diagnostics.md)
-to collect controlled request evidence; do not assume another schema rewrite or
-switching to Interactions will resolve it.
+group is now isolated by supplied Windows results: the schema emitted no `minItems`,
+and removing its two `maxItems` hints allowed HTTP 200 but failed evidence checks.
+See [array-bound and evidence diagnostics](gemini-array-evidence.md) for the scoped
+provider workaround, remaining per-bound uncertainty and updated Windows commands.
 
 ## Investigation and scope
 
@@ -39,8 +40,9 @@ is also useful when verifying from Windows.
 
 - Only Gemini gets a projected schema: local `$ref` definitions are inlined and
   unsupported string constraints omitted from provider hints. All invoice/line/
-  evidence fields, required lists, nullability, additional-properties restrictions,
-  numeric bounds and array limits remain. The original Pydantic model is not mutated.
+  evidence fields, required lists, nullability, additional-properties restrictions
+  and numeric bounds remain. `maxItems` is now omitted only from Gemini hints;
+  array limits stay in the original, unmodified Pydantic model and OpenAI schema.
 - After generation, the **same full Pydantic model and page/quote/value evidence
   validator** still run. Empty/oversized quotes, invalid currencies or money,
   unknown fields, missing facts and unsupported citations are rejected, never relaxed

@@ -99,3 +99,9 @@ For a remaining HTTP 400, run `python -m scripts.diagnose_gemini` to compare fou
 synthetic requests without changing the adapter. See the
 [PowerShell commands and interpretation guide](docs/gemini-http400-diagnostics.md)
 before optionally enabling the bounded `--isolate` probes.
+
+The supplied Windows results now isolate the `maxItems` group. Gemini hints omit
+that group while local limits remain enforced. Use `python -m scripts.check_gemini`
+for the updated single-call live check and see the
+[focused array/evidence guide](docs/gemini-array-evidence.md) for safe failure codes
+and the four-way `--array-bounds` diagnostic. HTTP 200 alone is not extraction success.
