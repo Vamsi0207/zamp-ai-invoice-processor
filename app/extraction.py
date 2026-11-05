@@ -56,8 +56,19 @@ class ExtractedInvoice(Model):
         return validate_money(value)
 
 
+CANONICAL_EVIDENCE_PATH_DESCRIPTION = (
+    "Canonical path relative to the invoice object, NOT the response root. "
+    "Scalar paths: vendor_name, vendor_reference, invoice_number, po_number, currency, "
+    "total, tax, shipping, discount. Line paths: lines.<zero-based index>.line_reference, "
+    "lines.<zero-based index>.description, lines.<zero-based index>.quantity, "
+    "lines.<zero-based index>.unit_price. Examples: vendor_name, total, lines.0.quantity. "
+    "Do NOT prefix any path with invoice. Use dot notation, not brackets, slashes, "
+    "wildcards or repeated prefixes. The exact path must identify an existing non-null scalar."
+)
+
+
 class Evidence(Model):
-    field: str = Field(min_length=1, max_length=150)
+    field: str = Field(min_length=1, max_length=150, description=CANONICAL_EVIDENCE_PATH_DESCRIPTION)
     page: int = Field(ge=1, le=20)
     quote: str = Field(min_length=1, max_length=2000)
 
@@ -157,6 +168,34 @@ def normalize(text):
     return " ".join(text.casefold().split())
 
 
+def canonicalize_gemini_evidence(result):
+    """Only remove one exact invoice. prefix resolving to a known non-null scalar.
+
+    Work on copies, reject alias collisions, and leave pages/quotes/values untouched.
+    The original source validator must still run on the returned result.
+    """
+    values = result.invoice.model_dump()
+    canonical = {key for key, value in values.items() if key != "lines" and value is not None}
+    for index, line in enumerate(values["lines"]):
+        canonical.update(f"lines.{index}.{key}" for key, value in line.items() if value is not None)
+    origins, evidence_items = {}, []
+    changed = False
+    for evidence in result.evidence:
+        raw = evidence.field
+        target = raw
+        if raw.startswith("invoice."):
+            target = raw.removeprefix("invoice.")
+            if target not in canonical:
+                raise EvidenceValidationError("INVALID_FIELD_OR_PAGE_REFERENCE", "INVALID_FIELD_PATH")
+            changed = True
+        # Different raw names collapsing to one path are not silently merged.
+        if target in origins and origins[target] != raw:
+            raise EvidenceValidationError("INVALID_FIELD_OR_PAGE_REFERENCE", "AMBIGUOUS_FIELD_PATH")
+        origins[target] = raw
+        evidence_items.append(evidence.model_copy(update={"field": target}) if target != raw else evidence)
+    return result.model_copy(update={"evidence": evidence_items}) if changed else result
+
+
 def validate_evidence(result, pages):
     page_text = {p["page"]: normalize(p["text"]) for p in pages}
     fields = {}
@@ -205,7 +244,11 @@ be whole units. Return the supplied JSON schema. For EVERY non-null scalar inclu
 evidence with field path (e.g. total or lines.0.unit_price), 1-based page, and verbatim
 quote containing the value. Normalize money to decimal strings, no currency symbols.
 Only return a currency code if the code itself is printed. Do not map vendor or PO
-line IDs from descriptions. Preserve printed references; human review will map IDs."""
+line IDs from descriptions. Preserve printed references; human review will map IDs.
+Evidence paths must be canonical: vendor_name, total and lines.0.quantity, NOT
+invoice.vendor_name, invoice.total or invoice.lines.0.quantity. The invoice wrapper
+in the response does not belong in evidence.field. Cite every non-null scalar.
+""" + CANONICAL_EVIDENCE_PATH_DESCRIPTION
 
 
 class AIAdapter:
@@ -264,6 +307,8 @@ class AIAdapter:
                 result = ExtractionResult.model_validate_json(content)
             except ValidationError:
                 raise InvalidProviderResponse("Provider extraction failed Pydantic validation", validation_stage="pydantic") from None
+            if self.provider == "gemini":
+                result = canonicalize_gemini_evidence(result)
             return validate_evidence(result, pages)
         except InvalidProviderResponse as error:
             if response is not None:

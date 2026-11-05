@@ -105,3 +105,8 @@ that group while local limits remain enforced. Use `python -m scripts.check_gemi
 for the updated single-call live check and see the
 [focused array/evidence guide](docs/gemini-array-evidence.md) for safe failure codes
 and the four-way `--array-bounds` diagnostic. HTTP 200 alone is not extraction success.
+
+For the confirmed `UNEXPECTED_INVOICE_PREFIX` mismatch, see the
+[canonical evidence-path fix and Windows check](docs/gemini-evidence-paths.md).
+The prompt/schema now specify relative paths; only a single exact, unambiguous
+Gemini `invoice.` alias may be canonicalized before unchanged source verification.

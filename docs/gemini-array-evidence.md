@@ -1,5 +1,9 @@
 # Gemini array bounds and safe evidence failures
 
+**Follow-up:** the latest Windows failure is `UNEXPECTED_INVOICE_PREFIX`.
+The [canonical-path fix](gemini-evidence-paths.md) makes instructions explicit and
+adds a narrow Gemini-only alias boundary. All source-verification checks remain.
+
 ## What is established
 
 The Windows live results supplied for `gemini-3.5-flash-lite` show full-schema HTTP
@@ -92,7 +96,9 @@ The first evidence failure is classified without exposing the offending data:
 `validation_stage` distinguishes `response`, `pydantic`, `evidence` and synthetic
 `fixture_expectation` checks. Pydantic failures have not yet reached evidence checks.
 Field paths are still canonical (`total`, `lines.0.unit_price`), not prefixed with
-`invoice.`. Pages remain 1-based. Existing case/whitespace normalization, numeric
+`invoice.` in the canonical result. A single valid, unambiguous Gemini `invoice.`
+alias may now be canonicalized at the adapter boundary; the source validator itself
+still requires canonical paths. Pages remain 1-based. Existing case/whitespace normalization, numeric
 token matching and complete non-null-field coverage are unchanged. Invalid paths,
 missing citations and invented quotes are not silently repaired or fabricated.
 

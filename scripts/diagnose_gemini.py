@@ -13,7 +13,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.documents import parse_pdf
-from app.extraction import AIAdapter, ExtractionResult, ProviderError, SYSTEM_PROMPT, gemini_response_schema, http_failure, validate_evidence
+from app.extraction import AIAdapter, ExtractionResult, ProviderError, SYSTEM_PROMPT, canonicalize_gemini_evidence, gemini_response_schema, http_failure, validate_evidence
 
 
 class StrictModel(BaseModel):
@@ -220,6 +220,7 @@ def run_probe(client, url, key, probe, pages):
                 parsed = ExtractionResult.model_validate_json(text)
                 result["schema_conforms"] = True
                 result["evidence_validated"] = False
+                parsed = canonicalize_gemini_evidence(parsed)
                 validate_evidence(parsed, pages)
                 result["evidence_validated"] = True
                 result["expectation_passed"] = parsed.invoice.invoice_number == "SYN-001" and parsed.invoice.total == "400.00"
