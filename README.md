@@ -1,112 +1,173 @@
-# Zamp PS-1 AI Invoice Processing
+# Zamp PS-1 · AI Invoice Processing
 
-React/TypeScript invoice operations application with a FastAPI/SQLite backend.
-Phase 4 connects intake, extraction, matching, human review and financial decisions.
-Earlier reported tests were not recovered; this repository has a new test suite.
+A local, auditable invoice-processing application built with React, FastAPI and
+SQLite. PDF invoices become evidence-backed drafts matched to existing vendor and
+purchase-order data. Human confirmation precedes deterministic financial checks
+and any approved allocation. The application does **not** initiate payments.
 
-## Development
+## Problem and approach
 
-Python 3.12 and Tesseract 5 with English language data are the validated runtimes.
-For Debian/Ubuntu, install OCR with `sudo apt-get install tesseract-ocr tesseract-ocr-eng`.
-For Windows installation, executable discovery and PowerShell commands, see
-[Windows Python and Tesseract setup](docs/windows.md). Set `TESSERACT_CMD` to a full
-executable path when Tesseract is not on PATH. Installing `pytesseract` alone does
-not install the Tesseract executable or its English language data.
-Use the existing checkout; a Git worktree is
-not necessary. Create a virtual environment and install the frozen dependency set:
+Accounts payable must prevent duplicate invoices and spending beyond received
+quantities or authorized PO balances. Invoice layouts vary, so AI helps extract
+unstructured information. Financial authorization must remain reproducible: the
+backend applies explicit rules instead of accepting an AI approval recommendation.
 
-```sh
-python -m venv .venv
-.venv/bin/python -m pip install -r requirements-lock.txt
-.venv/bin/python -m pytest -q
-.venv/bin/python -m scripts.smoke
-.venv/bin/python -m scripts.seed
-cd frontend && npm ci && npm run build && cd ..
-ZAMP_DB_PATH=data/demo.sqlite3 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+## Key capabilities
+
+- Drag-and-drop PDF intake, SHA-256 upload deduplication and persisted stage status.
+- Native PyMuPDF extraction and per-page English Tesseract OCR fallback.
+- Gemini/OpenAI structured extraction, Pydantic validation and source citations.
+- Exact master-data matching, PO suggestions and unresolved-field review.
+- Business duplicates, partial invoicing, cumulative amounts, quantities, receipts
+  and an explicitly authorized conditional 2% amount-tolerance policy.
+- Human confirmation, Approved/Review/Rejected decisions, atomic allocations,
+  safe retries, dashboard, history, evidence and audit views.
+- Credential-free **Manual review** using real PDF text and financial checks;
+  it does not generate AI fields or citations.
+
+The owner reports successful Windows/React scenarios using **`gemini-3.1-flash-lite`**:
+a $400 approval, business-duplicate rejection and $700 over-budget rejection.
+These are manually observed local results, not CI results. Current automated
+verification is recorded separately in [validation](docs/validation.md). No live
+Gemini call was made in Codex during this submission pass.
+
+## Technology and architecture
+
+| Layer | Implementation |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS; real `/api` HTTP requests |
+| Backend | Python 3.12, FastAPI, Pydantic; standard-library SQLite access |
+| Documents | PyMuPDF, Pillow, pytesseract + separately installed Tesseract 5/English |
+| Providers | Backend-only Gemini `generateContent` and OpenAI chat/completions adapters |
+| Persistence | SQLite plus local content-addressed PDF storage |
+| Tests | pytest, Vitest/Testing Library, Playwright/Chromium |
+
+```mermaid
+flowchart LR
+    UI[React dashboard] --> API[FastAPI workflows]
+    API --> PDF[PDF text / OCR]
+    PDF --> AI[Structured AI extraction]
+    AI --> EV[Pydantic + source evidence]
+    EV --> HR[Master matching + human review]
+    HR --> FE[Deterministic financial engine]
+    API <--> DB[(SQLite + local PDFs)]
+    FE --> DB
 ```
 
-Open `http://127.0.0.1:8000` in your own browser after starting the server. FastAPI
-serves the compiled frontend and same-origin `/api` endpoints. To develop with Vite,
-start the backend as above, then run `cd frontend && npm run dev` in another shell
-and open the Vite address it prints. Its `/api` proxy targets port 8000; override
-`ZAMP_API_TARGET` in the Vite server shell if needed (not a browser credential).
+The UI polls recorded stages. AI cannot allocate money: after review, the engine
+checks current balances and commits the financial run/allocation atomically. See
+[architecture](docs/architecture.md) for the sequence and transaction boundaries,
+and [business rules](docs/business-rules.md) for the exact policy.
 
-The database defaults to `data/zamp.sqlite3`. Set `ZAMP_DB_PATH` before startup.
-`.env.example` documents configuration; export variables yourself (no automatic
-dotenv loading). The seed command targets a separate synthetic demo database and
-does not alter the application database. Never commit real invoices, databases, or keys.
+## Installation and startup
 
-## API workflow
+Use **Python 3.12**, **Node.js 24**, Git and Tesseract 5 with English data. Python
+and frontend dependencies are pinned in `requirements-lock.txt` and
+`frontend/package-lock.json`.
 
-Create a vendor (`POST /vendors`), PO (`POST /purchase-orders`), receipt
-(`POST /receipts`), then invoice (`POST /invoices`). Call
-`POST /invoices/{id}/process` with `{"idempotency_key":"unique-attempt"}`.
-Read cumulative balances at `GET /purchase-orders/{id}/balance` and database
-readiness at `GET /health`. Interactive schema documentation is served at `/docs`.
-Identifiers and invoice data are immutable. Decimal money is accepted as strings.
-See [architecture and decision policy](docs/architecture.md) before interpreting
-Approved, Review, or Rejected results. Run on loopback: this prototype has no auth.
+The [Windows PowerShell setup](docs/windows.md) is the evaluator quickstart: clone,
+virtual environment, OCR, secure key entry, fresh database, frontend build and startup.
+`.env.example` documents variables; the application does **not** load `.env` files
+automatically. Keys belong only in the backend environment, never `VITE_*` variables.
 
-## Milestones
+Linux equivalent, from the repository root after installing English Tesseract:
 
-1. Deterministic financial engine, transactional allocations, persistence, API and tests.
-2. PDF validation, native extraction/OCR, real structured AI adapters and evidence.
-3. Phase 4: persistent workflows, React dashboard/history/review, actual stage polling,
-   source evidence and master-data receipt entry. See the [five-minute demo guide](docs/demo.md)
-   and [orchestration contracts / Gemini setup](docs/phase4.md).
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-lock.txt
+npm --prefix frontend ci
+npm --prefix frontend run build
+export ZAMP_DB_PATH=data/submission-demo.sqlite3
+export ZAMP_DOCUMENT_DIR=data/submission-documents
+export GEMINI_MODEL=gemini-3.1-flash-lite
+# Supply GEMINI_API_KEY through your secure backend environment when using Gemini.
+# Seed only a fresh demo path:
+.venv/bin/python -c "import os; from scripts.seed import seed; seed(os.environ['ZAMP_DB_PATH'])"
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
 
-Each milestone is tested and committed to a dedicated reconstruction branch; `main`
-is not directly overwritten. AI extraction must never bypass financial checks.
+Open `http://127.0.0.1:8000` in your browser. Build before starting FastAPI; it mounts
+`frontend/dist` only when that directory exists at startup. `/docs` exposes the API
+schema and `/health` checks database access. Use **one Uvicorn worker** and keep this
+unauthenticated prototype on loopback.
 
-## PDF and AI workflow
+For Vite development, keep FastAPI running and execute `npm --prefix frontend run dev`
+in a second terminal. Vite proxies `/api` to port 8000; optional `ZAMP_API_TARGET`
+changes that target. The built app needs no separate Vite server.
 
-1. `POST /documents` with multipart field `file` (PDF MIME type and `.pdf` suffix,
-   maximum 10 MiB, 20 pages). Encrypted, corrupt, empty, and unreadable documents
-   are rejected. Storage uses SHA-256 names; repeat uploads reuse the stored result.
-2. `GET /documents/{sha256}` shows per-page native/OCR text and extraction attempts.
-3. Optionally `POST /documents/{sha256}/extract` with `{"provider":"gemini"}` or
-   `{"provider":"openai"}`. Set the corresponding API key and optional model from
-   `.env.example`. These are real HTTPS adapters using schema-constrained JSON.
-   Missing configuration returns 503; upstream failures or invalid evidence return
-   502, never invented extraction results. Provider requests send extracted text;
-   they do not send the PDF binary. Calls may incur provider charges.
-4. Review the facts, quotes, and original PDF yourself. Resolve vendor, PO, and
-   PO-line references against master data; missing fields remain null, not guessed.
-   Submit a complete canonical `Invoice` body to `POST /documents/{sha256}/invoices`.
-   This records its document source; it does not approve or allocate anything.
-5. Process that invoice through `/invoices/{id}/process`. The same deterministic
-   financial checks apply to manually entered and document-derived invoices.
+### Configuration and seeding
 
-Quotes must exist on the cited page and support the extracted scalar value. This
-checks textual grounding, not document authenticity or semantic correctness; human
-review remains required. No automatically mapped IDs or AI payment decisions.
+| Variable | Purpose |
+| --- | --- |
+| `ZAMP_DB_PATH` | Database; default `data/zamp.sqlite3` |
+| `ZAMP_DOCUMENT_DIR` | PDF directory; defaults beside the selected database |
+| `TESSERACT_CMD` | Optional full executable path; otherwise PATH discovery |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Backend Gemini credential and model selection |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | Optional OpenAI alternative; model fallback `gpt-4.1-mini` |
 
-Real native and image-only PDF fixtures are committed under `fixtures/` and can be
-regenerated with `.venv/bin/python -m scripts.generate_fixtures`. All are visibly
-synthetic. Tests run real local OCR. Provider contract/error tests use HTTP mocks;
-live provider checks are **skipped by default**. To opt in, export the appropriate
-key and run `ZAMP_RUN_LIVE_AI=1 .venv/bin/python -m pytest -q -k live_provider`.
-Do not print keys or commit `.env`. Network access to `generativelanguage.googleapis.com`
-and/or `api.openai.com` is also required. Deprecation warnings from upstream
-Starlette/AnyIO and PyMuPDF are currently non-fatal.
+Explicitly select **`GEMINI_MODEL=gemini-3.1-flash-lite`** for the owner-verified demo.
+The unchanged application's fallback, used only if unset, is `gemini-3.5-flash-lite`.
+Access, quota and model availability are account-specific. No automatic provider/
+model fallback or retries of paid calls are performed.
 
-For Gemini request compatibility, safe error categories and Windows live verification,
-see [Gemini integration diagnostics](docs/gemini-integration.md). The default Gemini
-model is `gemini-3.5-flash-lite`; override `GEMINI_MODEL` with a model your account
-can use. No automatic model fallback or paid-call retries are performed.
+`seed(path)` creates DEMO-VENDOR, DEMO-PO ($1,000, 10 chairs at $100) and a receipt
+for 10 chairs. It inserts **no invoices**. `python -m scripts.seed` specifically
+targets `data/demo.sqlite3`, ignoring `ZAMP_DB_PATH`; use the explicit command above
+for another path. Seeding is not a reset: existing allocations remain.
 
-For a remaining HTTP 400, run `python -m scripts.diagnose_gemini` to compare four
-synthetic requests without changing the adapter. See the
-[PowerShell commands and interpretation guide](docs/gemini-http400-diagnostics.md)
-before optionally enabling the bounded `--isolate` probes.
+## Reproducible demo
 
-The supplied Windows results now isolate the `maxItems` group. Gemini hints omit
-that group while local limits remain enforced. Use `python -m scripts.check_gemini`
-for the updated single-call live check and see the
-[focused array/evidence guide](docs/gemini-array-evidence.md) for safe failure codes
-and the four-way `--array-bounds` diagnostic. HTTP 200 alone is not extraction success.
+Follow [the ordered A/B/C walkthrough](docs/demo-walkthrough.md) on one fresh seeded
+database. It covers React actions, expected evidence, evaluator checkpoints and state.
 
-For the confirmed `UNEXPECTED_INVOICE_PREFIX` mismatch, see the
-[canonical evidence-path fix and Windows check](docs/gemini-evidence-paths.md).
-The prompt/schema now specify relative paths; only a single exact, unambiguous
-Gemini `invoice.` alias may be canonicalized before unchanged source verification.
+| Fixture | Business identity | Role |
+| --- | --- | --- |
+| `fixtures/native_invoice.pdf` | SYN-001, 4 chairs, $400 | Approval; leaves $600 |
+| `fixtures/duplicate_invoice_variant.pdf` | Same SYN-001/vendor, different bytes | Business duplicate; balance stays $600 |
+| `fixtures/over_budget_invoice.pdf` | Unique SYN-002, 7 chairs, $700 | Amount, quantity and receipt violations; balance stays $600 |
+| `fixtures/scanned_invoice.pdf` | Image-only SYN-001 | Optional separate OCR check |
+
+All are synthetic and not payable. The generator recreates only native/scanned
+fixtures; do not regenerate PDFs mid-demo because byte identities can change.
+
+## Automated tests
+
+```sh
+.venv/bin/python -m pytest -q
+.venv/bin/python -m scripts.smoke
+npm --prefix frontend test
+npm --prefix frontend run build
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+On Windows use `.\.venv\Scripts\python.exe`; complete PowerShell commands are in
+[Windows setup](docs/windows.md). Provider contract tests use explicit HTTP mocks.
+Optional live tests need credentials **and** `ZAMP_RUN_LIVE_AI=1`. Separately,
+`python -m scripts.check_gemini` makes one live synthetic request and reports safe
+validation flags without invoice contents. Manual-mode browser tests do not test
+live AI. See [results and evidence provenance](docs/validation.md).
+
+## Known limitations and future improvements
+
+Single-host prototype: no authentication/roles, tamper-evident audit, encrypted
+storage, distributed queue, migration system or payment execution. Reviewer identity
+is self-reported. Money uses two decimal places, one PO/currency per invoice and
+whole units; credit notes and fractional units are unsupported. Confirmed invoices
+are immutable; there is no correction/release workflow. Source evidence establishes
+textual grounding, not authenticity or complete business-semantic correctness.
+
+Future work includes authenticated roles, audited corrections/reversals, migrations,
+isolated document workers, production backup/monitoring and broader invoice/currency
+coverage. These are proposals, not implemented features. Real data requires suitable
+access control and retention policies before use.
+
+## Documentation
+
+- [Windows setup](docs/windows.md) · [Demo walkthrough](docs/demo-walkthrough.md)
+- [Architecture](docs/architecture.md) · [Financial rules](docs/business-rules.md)
+- [Validation](docs/validation.md) · [Submission audit](docs/submission-audit.md)
+- [API/workflow reference](docs/phase4.md) · [Gemini troubleshooting](docs/gemini-integration.md)
+- [Synthetic browser screenshot](docs/screenshots/dashboard.png): automated local
+  browser activity, not the owner's live Gemini session.

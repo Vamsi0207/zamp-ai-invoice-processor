@@ -1,5 +1,11 @@
 # Remaining Gemini HTTP 400: evidence before production changes
 
+> Historical troubleshooting context: these experiments describe earlier Gemini
+> integration work, mostly with `gemini-3.5-flash-lite`. The current submission demo
+> explicitly selects the owner-verified `gemini-3.1-flash-lite`. Past statements about
+> absent Codex credentials or pending live checks are not current Windows failure
+> claims. See [current validation](validation.md) and [setup](windows.md).
+
 **Update:** Windows results isolate the emitted `maxItems` group (no `minItems`
 was present). The production projection now omits that group while local limits
 remain. Use [the focused array/evidence guide](gemini-array-evidence.md) and

@@ -1,3 +1,8 @@
+# Archived Phase 4 PR description
+
+Historical review text, retained for provenance. Use the current [README](../../README.md)
+and [validation](../validation.md) for submission status.
+
 Invoices previously needed separate manual API calls for document extraction,
 invoice creation and processing. This change adds persistent workflow stages and
 an integrated React/TypeScript operations UI for upload, evidence, exact master-data
