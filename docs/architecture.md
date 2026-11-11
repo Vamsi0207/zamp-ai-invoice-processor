@@ -5,6 +5,15 @@ AI handles layout variation and proposes nullable facts with source citations.
 Pydantic and source checks reject unsupported outputs; a human resolves uncertainty.
 The deterministic engine alone decides whether an allocation is allowed.
 
+The optional `DemoAccess` ASGI middleware gates all HTTP UI, API and document
+routes before request parsing; only minimal `/health` is public. The Docker
+entrypoint requires environment-configured credentials and runs one worker as
+UID 10001 after preparing `/data`. React is compiled in the image and served by
+FastAPI. Initial-only demo seeding occurs before importing the app, and both DB
+and PDFs can reside on a Render disk at `/data`. This adds no financial or
+extraction policy. See [Render setup](../README.md#deploy-a-protected-demo-on-render)
+for ephemeral Free storage and shared-login limitations.
+
 ## Components
 
 ```mermaid

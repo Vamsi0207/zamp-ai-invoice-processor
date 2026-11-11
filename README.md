@@ -1,6 +1,6 @@
 # Zamp PS-1 · AI Invoice Processing
 
-A local, auditable invoice-processing application built with React, FastAPI and
+A local or protected-demo invoice-processing application built with React, FastAPI and
 SQLite. PDF invoices become evidence-backed drafts matched to existing vendor and
 purchase-order data. Human confirmation precedes deterministic financial checks
 and any approved allocation. The application does **not** initiate payments.
@@ -11,6 +11,85 @@ Accounts payable must prevent duplicate invoices and spending beyond received
 quantities or authorized PO balances. Invoice layouts vary, so AI helps extract
 unstructured information. Financial authorization must remain reproducible: the
 backend applies explicit rules instead of accepting an AI approval recommendation.
+
+## Deploy a protected demo on Render
+
+Use a single **Docker Web Service** with [render.yaml](render.yaml), or select this
+repository in Render's **New → Web Service** and choose the Docker runtime. React
+is built inside the multi-stage image; FastAPI serves it and the APIs on
+`0.0.0.0:$PORT`. Tesseract and English data are included. Do not set a custom start
+command: the entrypoint validates access credentials, initializes only a new DB,
+and starts one backend worker.
+
+1. Merge the deployment PR, then connect GitHub in Render and select this repo's
+   `main` branch, repository root, and `Dockerfile`. Alternatively create a Blueprint
+   from `render.yaml`. The provided blueprint selects the Free plan.
+2. In the service's **Environment** settings, set the following before deploying:
+
+   | Variable | Value |
+   | --- | --- |
+   | `ZAMP_DEMO_USERNAME` | Your chosen demo login (no colon) |
+   | `ZAMP_DEMO_PASSWORD` | A unique random secret, at least 24 characters |
+   | `ZAMP_REQUIRE_DEMO_AUTH` | `1` (required by the container entrypoint) |
+   | `GEMINI_API_KEY` | Your own Gemini key; server runtime only |
+   | `GEMINI_MODEL` | `gemini-3.1-flash-lite` |
+   | `ZAMP_DB_PATH` | `/data/zamp.sqlite3` |
+   | `ZAMP_DOCUMENT_DIR` | `/data/documents` |
+
+   Render supplies `PORT`; do not hardcode it. Never use `VITE_*` variables for
+   secrets or put credentials in Git, build arguments, URLs or screenshots. Generate
+   the demo password in a password manager. Without a Gemini key, manual review is
+   supported; leave the key unset rather than inventing a successful AI result.
+3. **Storage choice:** Render Free's filesystem is temporary. Records and PDFs can
+   disappear on restart, redeploy or instance replacement; Free services can also
+   sleep and cold-start. A fresh filesystem will receive fresh synthetic master
+   data. For retention, select a paid instance and attach a persistent disk mounted
+   at **`/data`** *before* the first useful upload. The Free blueprint deliberately
+   has no disk. Do not run multiple replicas/workers against this SQLite workflow.
+   Both storage paths are configurable; for a disk keep both beneath its mount.
+   The root bootstrap gives UID 10001 access to `/data`, then the server runs without
+   root privileges. Custom mount roots need equivalent writable permissions.
+4. Set **Health Check Path** to `/health` (already in the blueprint), then deploy.
+   Render displays the HTTPS `https://<service-name>.onrender.com` URL at the top of
+   the service dashboard after provisioning. Open that URL and enter the demo login
+   in the browser's authentication prompt. Use HTTPS exclusively; Basic authentication
+   is encrypted in transit by Render's TLS, not by the authentication scheme itself.
+5. Test the actual hosted URL: unauthenticated `/` and `/api/master-data` must return
+   401, `/health` must return only `{"status":"ok"}`, and login must load the React
+   dashboard and protected APIs. Run the synthetic [A/B/C demo](docs/demo-walkthrough.md)
+   on a fresh state. With a paid disk, restart the service and verify the same runs,
+   PDFs and remaining balance persist. **A local Docker pass is not a verified Render
+   deployment; the hosted URL still needs these checks.**
+
+The container seeds vendor, PO and receipts only after exclusively creating a
+previously nonexistent SQLite file. It never resets or reseeds an existing file,
+including an empty or damaged one. Back up before maintenance; investigate failed
+initialization rather than deleting a valuable DB. The runtime schema initialization
+uses the existing code; no new migration framework is introduced. Back up SQLite and
+uploaded PDFs together while the service is stopped. Adding a disk does not migrate
+data from an earlier ephemeral instance.
+
+All UI/assets, API aliases, legacy routes, PDF downloads and API documentation are
+protected. Only the minimal `/health` endpoint is public. Mutating browser requests
+from another origin are rejected; authenticated responses disable browser caching.
+This is a shared demo login, without roles, individual reviewer identity, rate
+limiting or an application logout. Use a unique long random secret, share narrowly,
+and close private browser sessions after use. Rotate it in Render and redeploy to
+revoke old credentials. Do not use this gate as production financial access control.
+
+Local Docker verification (Docker Desktop also works on Windows):
+
+```powershell
+docker build -t zamp-render .
+# Set the two demo credentials securely in this shell first; pass names, not values.
+docker volume create zamp-demo-data
+docker run --rm --name zamp-demo -p 8000:8000 --mount source=zamp-demo-data,target=/data -e ZAMP_DEMO_USERNAME -e ZAMP_DEMO_PASSWORD -e GEMINI_API_KEY -e GEMINI_MODEL zamp-render
+```
+
+Open `http://127.0.0.1:8000` for local testing only. The existing
+[Windows non-Docker setup](docs/windows.md) still works with authentication disabled
+when both demo credential variables are unset. Setting both enables the same gate
+locally. Do not export a requirement flag without configuring valid credentials.
 
 ## Key capabilities
 
@@ -89,7 +168,7 @@ export GEMINI_MODEL=gemini-3.1-flash-lite
 Open `http://127.0.0.1:8000` in your browser. Build before starting FastAPI; it mounts
 `frontend/dist` only when that directory exists at startup. `/docs` exposes the API
 schema and `/health` checks database access. Use **one Uvicorn worker** and keep this
-unauthenticated prototype on loopback.
+local prototype on loopback; configure the demo gate before exposing it publicly.
 
 For Vite development, keep FastAPI running and execute `npm --prefix frontend run dev`
 in a second terminal. Vite proxies `/api` to port 8000; optional `ZAMP_API_TARGET`
@@ -151,7 +230,8 @@ live AI. See [results and evidence provenance](docs/validation.md).
 
 ## Known limitations and future improvements
 
-Single-host prototype: no authentication/roles, tamper-evident audit, encrypted
+Single-host prototype: optional shared demo authentication, but no user roles,
+tamper-evident audit, encrypted
 storage, distributed queue, migration system or payment execution. Reviewer identity
 is self-reported. Money uses two decimal places, one PO/currency per invoice and
 whole units; credit notes and fractional units are unsupported. Confirmed invoices
@@ -168,6 +248,7 @@ access control and retention policies before use.
 - [Windows setup](docs/windows.md) · [Demo walkthrough](docs/demo-walkthrough.md)
 - [Architecture](docs/architecture.md) · [Financial rules](docs/business-rules.md)
 - [Validation](docs/validation.md) · [Submission audit](docs/submission-audit.md)
+- [Render packaging verification](docs/render-validation.md)
 - [API/workflow reference](docs/phase4.md) · [Gemini troubleshooting](docs/gemini-integration.md)
 - [Synthetic browser screenshot](docs/screenshots/dashboard.png): automated local
   browser activity, not the owner's live Gemini session.
