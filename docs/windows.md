@@ -154,6 +154,7 @@ Remove-Item Env:ZAMP_RUN_LIVE_AI -ErrorAction SilentlyContinue
 Remove-Item Env:ZAMP_REQUIRE_DEMO_AUTH -ErrorAction SilentlyContinue
 Remove-Item Env:ZAMP_DEMO_USERNAME -ErrorAction SilentlyContinue
 Remove-Item Env:ZAMP_DEMO_PASSWORD -ErrorAction SilentlyContinue
+Remove-Item Env:ZAMP_PUBLIC_DEMO -ErrorAction SilentlyContinue
 $env:TESSERACT_CMD = 'C:\Program Files\Tesseract-OCR\tesseract.exe'
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m scripts.smoke

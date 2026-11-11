@@ -15,3 +15,4 @@ frontend/test-results
 frontend/playwright-report
 **/*.log
 **/*.jsonl
+**/*.public.lock

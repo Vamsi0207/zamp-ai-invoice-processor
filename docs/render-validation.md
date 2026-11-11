@@ -1,5 +1,8 @@
 # Render packaging verification
 
+This records the original private deployment pass. For the later opt-in login-free
+mode and its current test results, see [public demo verification](public-demo.md#automated-verification).
+
 Verified locally on Linux, 2026-11-11, starting from main `3b2080c` (submission
 PR #7 merged). No hosted Render URL or live AI extraction was tested.
 

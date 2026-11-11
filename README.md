@@ -14,6 +14,13 @@ backend applies explicit rules instead of accepting an AI approval recommendatio
 
 ## Deploy a protected demo on Render
 
+**Want a login-free case-study demo?** Follow [Public Render demo](docs/public-demo.md).
+Set `ZAMP_PUBLIC_DEMO=1` deliberately, remove private auth settings, choose new
+synthetic-only storage paths, and retain server-enforced shared quotas. Existing
+private settings are never silently bypassed. Public mode only accepts the four
+supplied sample PDFs and blocks master-data/receipt changes. Everyone shares state.
+The instructions below describe the default **private** deployment.
+
 Use a single **Docker Web Service** with [render.yaml](render.yaml), or select this
 repository in Render's **New → Web Service** and choose the Docker runtime. React
 is built inside the multi-stage image; FastAPI serves it and the APIs on

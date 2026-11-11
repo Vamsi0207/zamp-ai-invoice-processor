@@ -112,7 +112,40 @@ def main():
                                  "reviewer": "synthetic-reviewer", "confirmed": True, "note": "Retry"})
             assert replay.status_code == 202
             assert client.get("/purchase-orders/DEMO-PO/balance").json()["allocated_cents"] == 40000
-        print("Container checks passed: fail-closed auth, UI/assets/sample downloads, PORT=8765, English OCR, manual approval, UID 10001, volume restart/PDF persistence, no reseeding or double allocation. No live AI request.")
+        run("rm", "-f", name)
+        # Public mode cannot expose the previous private database, even with no key.
+        old = run("run", "--rm", "--mount", f"source={volume},target=/data", "-e", "ZAMP_PUBLIC_DEMO=1", "zamp-render:test", check=False)
+        assert old.returncode != 0
+        run("run", "-d", "--name", name, "-p", f"127.0.0.1:{port}:8765",
+            "--mount", f"source={volume},target=/data", "-e", "PORT=8765", "-e", "ZAMP_PUBLIC_DEMO=1",
+            "-e", "ZAMP_DB_PATH=/data/public.sqlite3", "-e", "ZAMP_DOCUMENT_DIR=/data/public-documents",
+            "-e", "ZAMP_DEMO_UPLOADS_PER_MINUTE=1", "zamp-render:test")
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", trust_env=False, timeout=45) as client:
+            ready(client)
+            index = client.get("/")
+            assert index.status_code == 200 and "www-authenticate" not in index.headers
+            assert client.get("/api/configuration").json()["public_demo"]["enabled"]
+            assert client.post("/api/receipts", json={}).status_code == 403
+            response = client.post("/api/workflows", data={"provider": "manual", "idempotency_key": "public"},
+                                   files={"file": ("scan.pdf", (root / "fixtures/scanned_invoice.pdf").read_bytes(), "application/pdf")})
+            assert response.status_code == 202
+            wid = response.json()["id"]
+            run_data = wait_run(client, wid, "Review")
+            assert run_data["document"]["pages"][0]["method"] == "ocr"
+            response = client.post("/api/workflows", data={"provider": "manual", "idempotency_key": "again"},
+                                   files={"file": ("scan.pdf", (root / "fixtures/scanned_invoice.pdf").read_bytes(), "application/pdf")})
+            assert response.status_code == 429
+            response = client.post(f"/api/workflows/{wid}/review", json={"invoice": invoice,
+                                   "reviewer": "demo-reviewer", "confirmed": True, "note": "Synthetic public demo confirmation"})
+            assert response.status_code == 202
+            wait_run(client, wid, "Approved")
+            run("restart", name)
+            ready(client)
+            assert client.get(f"/api/workflows/{wid}").json()["status"] == "Approved"
+            assert client.get("/api/master-data").json()["purchase_orders"][0]["remaining_cents"] == 60000
+            count = run("exec", name, "python", "-c", "import sqlite3; print(sqlite3.connect('/data/public.sqlite3').execute(\"SELECT used FROM public_demo_budgets WHERE name='UPLOADS_PER_MINUTE'\").fetchone()[0])")
+            assert count.stdout.strip() == b"1"
+        print("Private and public container checks passed: private auth preserved, public login-free access, isolated synthetic data, PORT=8765, English OCR, manual approval, UID 10001, volume restart/PDF persistence, durable rate limits, restricted receipts, no reseeding or double allocation. No live AI request.")
     finally:
         run("rm", "-f", name, check=False)
         run("volume", "rm", volume, check=False)

@@ -14,15 +14,31 @@ from .workflows import Conflict, Provider, RetryRequest, ReviewRequest, Workflow
 
 
 def install_workflows(app, service, documents):
-    workflows = Workflows(service, documents, lambda provider: app.state.adapter_factory(provider))
+    public = app.state.public_demo
+
+    def adapter(provider):
+        inner = app.state.adapter_factory(provider)
+        return public.adapter(inner) if public else inner
+
+    workflows = Workflows(service, documents, adapter)
     app.state.workflows = workflows
 
     @asynccontextmanager
     async def lifespan(app):
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            for wid in workflows.recover():
-                executor.submit(workflows.execute, wid)
-            yield
+        def resume(wid):
+            if public:
+                with public.processing:
+                    workflows.execute(wid)
+            else:
+                workflows.execute(wid)
+        try:
+            with ThreadPoolExecutor(max_workers=1 if public else 2) as executor:
+                for wid in workflows.recover():
+                    executor.submit(resume, wid)
+                yield
+        finally:
+            if public:
+                public.close()
 
     app.router.lifespan_context = lifespan
 
@@ -35,10 +51,13 @@ def install_workflows(app, service, documents):
 
     @router.get("/configuration")
     def configuration():
-        return {"providers": {p: {"configured": bool(os.getenv(key)), "model": os.getenv(model, default).strip()}
+        result = {"providers": {p: {"configured": bool(os.getenv(key)) and not (public and p == "openai"), "model": os.getenv(model, default).strip()}
                 for p, key, model, default in (("gemini", "GEMINI_API_KEY", "GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
                                                ("openai", "OPENAI_API_KEY", "OPENAI_MODEL", "gpt-4.1-mini"))},
                 "manual_review_available": True}
+        if public:
+            result["public_demo"] = public.configuration()
+        return result
 
     @router.get("/master-data")
     def master_data():
@@ -49,8 +68,9 @@ def install_workflows(app, service, documents):
         return service.create_receipt(body)
 
     @router.get("/samples/{kind}")
-    def sample(kind: Literal["native", "scanned"]):
-        filename = "native_invoice.pdf" if kind == "native" else "scanned_invoice.pdf"
+    def sample(kind: Literal["native", "scanned", "duplicate", "over-budget"]):
+        filename = {"native": "native_invoice.pdf", "scanned": "scanned_invoice.pdf",
+                    "duplicate": "duplicate_invoice_variant.pdf", "over-budget": "over_budget_invoice.pdf"}[kind]
         return FileResponse(Path(__file__).resolve().parents[1] / "fixtures" / filename,
                             media_type="application/pdf", filename=f"synthetic_{filename}")
 
@@ -76,7 +96,11 @@ def install_workflows(app, service, documents):
             raise HTTPException(422, "PDF must not be empty")
         if not idempotency_key.strip():
             raise HTTPException(422, "Idempotency key is required")
-        run = workflows.submit(data, file.filename, provider, idempotency_key)
+        if public:
+            filename, idempotency_key = public.upload(data, provider, idempotency_key)
+        else:
+            filename = file.filename
+        run = workflows.submit(data, filename, provider, idempotency_key)
         background.add_task(workflows.execute, run["id"])
         return run
 
@@ -92,6 +116,8 @@ def install_workflows(app, service, documents):
 
     @router.post("/workflows/{wid}/review", status_code=202)
     def review(wid: str, body: ReviewRequest, background: BackgroundTasks):
+        if public:
+            public.review(workflows, wid, body)
         try:
             run = workflows.review(wid, body)
         except ValueError as exc:
@@ -103,6 +129,8 @@ def install_workflows(app, service, documents):
 
     @router.post("/workflows/{wid}/retry", status_code=202)
     def retry(wid: str, body: RetryRequest, background: BackgroundTasks):
+        if public:
+            public.retry(workflows, wid, body.provider)
         run = workflows.retry(wid, body.provider)
         background.add_task(workflows.execute, wid)
         return run

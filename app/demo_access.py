@@ -1,4 +1,4 @@
-"""Optional local, mandatory container demo gate. Not a multi-user auth system."""
+"""Private demo gate; explicit public mode never overrides configured credentials."""
 import base64
 import binascii
 import hmac
@@ -12,6 +12,10 @@ def credentials():
     username = os.getenv("ZAMP_DEMO_USERNAME", "")
     password = os.getenv("ZAMP_DEMO_PASSWORD", "")
     required = os.getenv("ZAMP_REQUIRE_DEMO_AUTH", "0") == "1"
+    if os.getenv("ZAMP_PUBLIC_DEMO", "0") == "1":
+        if required or username or password:
+            raise RuntimeError("Public demo conflicts with explicitly configured private authentication; remove private auth settings deliberately")
+        return None
     if required or username or password:
         if not username or ":" in username or len(password) < 24:
             raise RuntimeError("Demo access requires ZAMP_DEMO_USERNAME (without colon) and ZAMP_DEMO_PASSWORD (at least 24 characters)")
