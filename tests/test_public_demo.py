@@ -19,7 +19,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 @pytest.fixture
 def public(monkeypatch, tmp_path):
     monkeypatch.setenv("ZAMP_PUBLIC_DEMO", "1")
-    for name in ["ZAMP_REQUIRE_DEMO_AUTH", "ZAMP_DEMO_USERNAME", "ZAMP_DEMO_PASSWORD"]:
+    for name in ["ZAMP_REQUIRE_DEMO_AUTH", "ZAMP_DEMO_USERNAME", "ZAMP_DEMO_PASSWORD", "GEMINI_API_KEY", "OPENAI_API_KEY"]:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("ZAMP_DOCUMENT_DIR", str(tmp_path / "public-documents"))
     path = tmp_path / "public.sqlite3"
@@ -53,6 +53,7 @@ def test_no_login_and_synthetic_configuration(public):
         assert response.status_code in ({200, 404} if path == "/" else {200})
         assert "www-authenticate" not in response.headers
     assert public.get("/api/configuration").json()["public_demo"]["enabled"]
+    assert public.get("/api/configuration").json()["providers"]["gemini"]["configured"] is False
 
 
 @pytest.mark.parametrize("path", ["/vendors", "/purchase-orders", "/receipts", "/api/receipts", "/invoices", "/invoices/1/process", "/documents", "/documents/unknown/extract", "/documents/unknown/invoices"])
