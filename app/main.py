@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Database
+from .demo_access import DemoAccess, credentials
 from .documents import DocumentStore, MAX_BYTES
 from .extraction import AIAdapter, ExtractRequest, ProviderError, ProviderNotConfigured
 from .schemas import Invoice, ProcessRequest, PurchaseOrder, Receipt, Vendor
@@ -15,7 +16,10 @@ from .workflow_api import install_workflows
 
 
 def create_app(db_path=None):
+    demo_credentials = credentials()  # Validate before opening any application data.
     app = FastAPI(title="Zamp PS-1 Invoice Processing", version="0.1.0")
+    if demo_credentials:
+        app.add_middleware(DemoAccess, expected=demo_credentials)
     service = Service(Database(db_path))
     app.state.service = service
     documents = DocumentStore(service.database)

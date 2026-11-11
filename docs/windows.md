@@ -137,7 +137,9 @@ npm run dev
 ```
 
 Use the URL Vite prints. The built dashboard needs only the FastAPI process. There
-is no authentication: keep the demo on loopback and use one backend worker.
+is no authentication by default in this local setup: keep the demo on loopback and
+use one backend worker. The optional shared demo gate and Render container setup
+are documented in the [README](../README.md#deploy-a-protected-demo-on-render).
 
 ## Automated tests
 
@@ -149,6 +151,9 @@ terminal; the following removal affects only this test process's environment:
 Remove-Item Env:ZAMP_DB_PATH -ErrorAction SilentlyContinue
 Remove-Item Env:ZAMP_DOCUMENT_DIR -ErrorAction SilentlyContinue
 Remove-Item Env:ZAMP_RUN_LIVE_AI -ErrorAction SilentlyContinue
+Remove-Item Env:ZAMP_REQUIRE_DEMO_AUTH -ErrorAction SilentlyContinue
+Remove-Item Env:ZAMP_DEMO_USERNAME -ErrorAction SilentlyContinue
+Remove-Item Env:ZAMP_DEMO_PASSWORD -ErrorAction SilentlyContinue
 $env:TESSERACT_CMD = 'C:\Program Files\Tesseract-OCR\tesseract.exe'
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m scripts.smoke

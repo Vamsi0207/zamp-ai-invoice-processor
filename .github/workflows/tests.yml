@@ -32,3 +32,5 @@ jobs:
         working-directory: frontend
       - run: npm run test:e2e
         working-directory: frontend
+      - run: docker build -t zamp-render:test .
+      - run: .venv/bin/python -m scripts.check_container

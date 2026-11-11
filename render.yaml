@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: zamp-invoice-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    numInstances: 1
+    envVars:
+      - key: ZAMP_REQUIRE_DEMO_AUTH
+        value: "1"
+      - key: ZAMP_DEMO_USERNAME
+        sync: false
+      - key: ZAMP_DEMO_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.1-flash-lite
+      - key: ZAMP_DB_PATH
+        value: /data/zamp.sqlite3
+      - key: ZAMP_DOCUMENT_DIR
+        value: /data/documents
