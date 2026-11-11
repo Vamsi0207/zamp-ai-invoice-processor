@@ -1,10 +1,23 @@
 // Frontend HTTP-contract/component tests use explicit fetch mocks. Browser tests use the real API.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { api, type Run } from './api'
+import { api, type Run, type Config } from './api'
 import { Badge, Timeline, UploadCard } from './App'
 
 describe('HTTP integration contracts', () => {
+  it('shows safe rate-limit messages without auto retrying', async () => {
+    const mock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Shared demo usage limit reached' }), { status: 429 }))
+    vi.stubGlobal('fetch', mock)
+    await expect(api('/workflows/run/retry', { method: 'POST', body: '{}' })).rejects.toThrow('Shared demo usage limit reached')
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the unsupported public OpenAI option', () => {
+    const config = { providers: { gemini: { configured: false }, openai: { configured: false } }, public_demo: { enabled: true } } as Config
+    render(<UploadCard config={config} onUploaded={() => {}}/>)
+    expect(screen.getByRole('option', { name: /OpenAI/ })).toBeDisabled()
+    expect(screen.getByRole('option', { name: /Manual review/ })).not.toBeDisabled()
+  })
   it('sends JSON to actual API paths and preserves error details', async () => {
     const mock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Select an existing purchase order' }), { status: 422 }))
     vi.stubGlobal('fetch', mock)

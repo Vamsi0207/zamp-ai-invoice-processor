@@ -13,7 +13,7 @@ export type Run = {
   decision: { decision: string; reasons: string[]; invoice_total_cents: number; previously_allocated_cents: number; po_total_cents: number | null; policy_version: string } | null
   events: { id: number; stage: string; status: string; detail: string; created_at: string }[]
 }
-export type Config = { providers: Record<'gemini' | 'openai', { configured: boolean; model: string }>; manual_review_available: boolean }
+export type Config = { public_demo?: { enabled: boolean; limits?: Record<string, number>; message: string; reviewer: string; note: string }; providers: Record<'gemini' | 'openai', { configured: boolean; model: string }>; manual_review_available: boolean }
 export type Dashboard = { total: number; invoice_count: number; counts: Record<string, number>; recent: Run[] }
 export type PO = { id: string; vendor_id: string; currency: string; total_cents: number; remaining_cents: number; allocated_cents: number; tolerance_enabled: boolean; lines: { id: string; description: string; quantity: number; received_quantity: number; unit_price_cents: number }[] }
 export type MasterData = { vendors: { id: string; name: string; active: boolean }[]; purchase_orders: PO[] }

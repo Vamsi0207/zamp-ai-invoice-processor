@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
@@ -8,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .db import Database
 from .demo_access import DemoAccess, credentials
+from .public_demo import PublicDemo, PublicBoundary, enabled
 from .documents import DocumentStore, MAX_BYTES
 from .extraction import AIAdapter, ExtractRequest, ProviderError, ProviderNotConfigured
 from .schemas import Invoice, ProcessRequest, PurchaseOrder, Receipt, Vendor
@@ -17,7 +19,15 @@ from .workflow_api import install_workflows
 
 def create_app(db_path=None):
     demo_credentials = credentials()  # Validate before opening any application data.
+    public_demo = None
+    if enabled():
+        path = str(db_path or os.getenv("ZAMP_DB_PATH", "data/zamp.sqlite3"))
+        root = os.getenv("ZAMP_DOCUMENT_DIR", str(Path(path).parent / "documents"))
+        public_demo = PublicDemo(path, root)
     app = FastAPI(title="Zamp PS-1 Invoice Processing", version="0.1.0")
+    app.state.public_demo = public_demo
+    if public_demo:
+        app.add_middleware(PublicBoundary, guard=public_demo)
     if demo_credentials:
         app.add_middleware(DemoAccess, expected=demo_credentials)
     service = Service(Database(db_path))

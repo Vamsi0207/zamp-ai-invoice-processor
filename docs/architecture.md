@@ -14,6 +14,13 @@ and PDFs can reside on a Render disk at `/data`. This adds no financial or
 extraction policy. See [Render setup](../README.md#deploy-a-protected-demo-on-render)
 for ephemeral Free storage and shared-login limitations.
 
+Opt-in [public mode](public-demo.md) adds a synthetic-only HTTP boundary, a separately
+marked new workspace, durable SQLite usage counters and a single-process lock.
+It rejects arbitrary PDFs/records, freezes master data, serializes expensive work
+and wraps the unchanged provider adapter with atomic global budgets. Private auth
+and public mode conflict rather than silently overriding each other. No financial,
+evidence or human-confirmation rule is changed.
+
 ## Components
 
 ```mermaid

@@ -7,6 +7,9 @@ services:
     healthCheckPath: /health
     numInstances: 1
     envVars:
+      # Safe default remains private. Public mode requires deliberate settings changes.
+      - key: ZAMP_PUBLIC_DEMO
+        value: "0"
       - key: ZAMP_REQUIRE_DEMO_AUTH
         value: "1"
       - key: ZAMP_DEMO_USERNAME

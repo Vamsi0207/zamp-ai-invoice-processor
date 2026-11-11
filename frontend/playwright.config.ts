@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 import path from 'node:path'
 
 export default defineConfig({
+  testMatch: process.env.ZAMP_E2E_PUBLIC_DEMO === '1' ? 'public-demo.spec.ts' : 'application.spec.ts',
   testDir: './e2e', workers: 1, timeout: 45000, fullyParallel: false,
   reporter: 'list',
   use: { baseURL: 'http://127.0.0.1:5178', viewport: { width: 1440, height: 1100 }, screenshot: 'only-on-failure', trace: 'retain-on-failure',
